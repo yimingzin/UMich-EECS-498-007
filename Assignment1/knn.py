@@ -5,7 +5,9 @@ from typing import Dict, List
 # num_train = 500, num_test = 250
 def compute_distances_two_loops(x_train: torch.Tensor, x_test: torch.Tensor):
     """
-    :param x_train: Tensor of shape (num_train, D1, D2, ...)    :param x_test: Tensor of shape (num_test, D1, D2, ...)    :return: distances: Tensor of shape (num_train, num_test)
+    :param x_train: Tensor of shape (num_train, D1, D2, ...)
+    :param x_test: Tensor of shape (num_test, D1, D2, ...)
+    :return: distances: Tensor of shape (num_train, num_test)
     """
     num_train = x_train.shape[0]
     num_test = x_test.shape[0]
@@ -94,10 +96,6 @@ class KnnClassifier:
             k: int = 1,
             quiet: bool = False
     ):
-        """
-        Utility method for checking the accuracy of this classifier on test        data. Returns the accuracy of the classifier on the test data, and        also prints a message giving the accuracy.
-        Args:            x_test: Tensor of shape (num_test, C, H, W) giving test samples.            y_test: int64 Tensor of shape (num_test,) giving test labels.            k: The number of neighbors to use for prediction.            quiet: If True, don't print a message.
-        Returns:            accuracy: Accuracy of this classifier on the test data, as a                percent. Python float in the range [0, 100]        """
         y_test_pred = self.predict(x_test, k=k)
         num_samples = x_test.shape[0]
         num_correct = (y_test == y_test_pred).sum().item()
