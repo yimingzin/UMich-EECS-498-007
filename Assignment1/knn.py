@@ -101,7 +101,8 @@ class KnnClassifier:
         num_correct = (y_test == y_test_pred).sum().item()
         accuracy = 100.0 * num_correct / num_samples
         msg = (
-            f"Got {num_correct} / {num_samples} correct; "            f"accuracy is {accuracy:.2f}%"
+            f"Got {num_correct} / {num_samples} correct; "           
+            f"accuracy is {accuracy:.2f}%"
         )
         if not quiet:
             print(msg)
@@ -117,7 +118,9 @@ def knn_cross_validate(
     x_train_folds = []
     y_train_folds = []
     """  
-        x_train_folds.shape = [(100, 3072), (100, 3072), (100, 3072), (100, 3072)]        y_train_folds.shape = [(100, ), (100, ), (100, ), (100, ), (100, ), ]    """
+        x_train_folds.shape = [(100, 3072), (100, 3072), (100, 3072), (100, 3072)]        
+        y_train_folds.shape = [(100, ), (100, ), (100, ), (100, ), (100, ), ]    
+    """
     x_train_folds = x_train.chunk(num_folds)
     y_train_folds = y_train.chunk(num_folds)
 
@@ -132,7 +135,9 @@ def knn_cross_validate(
             """  
             假设我们有5个折，每个折表示为 x_train_folds 列表中的一个元素：x_train_folds = [fold0, fold1, fold2, fold3, fold4]  
             如果 i=2，那么我们希望把 fold2 作为验证集，其他的折作为训练集。  
-            x_train_folds[:2] 得到 [fold0, fold1]            x_train_folds[3:] 得到 [fold3, fold4]            """
+            x_train_folds[:2] 得到 [fold0, fold1]           
+            x_train_folds[3:] 得到 [fold3, fold4]            
+            """
             x_train = torch.cat(x_train_folds[:i] + x_train_folds[i + 1:], dim=0)
             y_train = torch.cat(y_train_folds[: i] + y_train_folds[i + 1:], dim=0)
 
