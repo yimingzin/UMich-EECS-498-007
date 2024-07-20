@@ -36,6 +36,7 @@ def compute_distances_one_loop(x_train: torch.Tensor, x_test: torch.Tensor):
     # 500张训练图片，取出1张，复制 250张(num_test)份, 直接求他们直接的距离
     for i in range(num_train):
         # x_train[i] 是 1 x 3072, x_test_temp是 num_test x 3072, 通过广播机制把x_train复制num_test份
+        # x_train_temp[i] - x_test_temp 的形状为(num_test, 3072), dim = 1求和后为num_test
         # 我们求和是对测试样本的所有像素点求和，即3072
         distances[i] = torch.sum((x_train_temp[i] - x_test_temp)**2, dim=1).pow(1/2)
 
@@ -63,15 +64,16 @@ def compute_distances_no_loops(x_train: torch.Tensor, x_test: torch.Tensor):
     return distance
 
 
-def predict_labels(dists: torch.Tensor, y_train: torch.Tensor, k: int = 1):
-    num_train, num_test = dists.shape
-    # 我们是去预测未知样本的类别(标签),所以这里是测试样本的数量
-    y_pred = torch.zeros(num_test, dtype=torch.float64)
+def predict_labels(distances: torch.Tensor, y_train: torch.Tensor, k: int = 1):
+    num_train, num_test = distances.shape
 
-    # 从列出发(测试样本), 找距离最小的k个值的索引
-    top_k = torch.topk(dists, k, 0, False).indices
+    y_pred = torch.zeros(num_test, dtype=torch.int64)
+    # 按列求，代表了每个测试样本到所有训练样本的最小距离，top_k.shape = (k, num_test)，每列是一个测试样本的k个最近邻样本的索引
+    top_k = torch.topk(distances, k=k, dim=0, largest=False).indices
+
     for j in range(num_test):
-        # top_k[:, j] 包含的是第 j 个测试样本的 k 个最近训练样本的索引,torch.mode会返回众数本身和其索引，只需要本身
+        #top_k[:, j] - 提取索引: 形状为[k]的一维张量, 再拿着这些索引去y_train中找对应标签，其中出现最多的即为预测
+        #torch.mode若每个数字都只出现了一次就返回第一个
         y_pred[j] = torch.mode(y_train[top_k[:, j]])[0].item()
 
     return y_pred
@@ -134,7 +136,7 @@ def knn_cross_validate(
             y_val = y_train_folds[i]
             """  
             假设我们有5个折，每个折表示为 x_train_folds 列表中的一个元素：x_train_folds = [fold0, fold1, fold2, fold3, fold4]  
-            如果 i=2，那么我们希望把 fold2 作为验证集，其他的折作为训练集。  
+            如果 i=2，那么我们希望把 fold2 作为验证集，其他的折作为训练集,同时在dim=0上拼接是为了拼成x_train.shape = (400, 3072)
             x_train_folds[:2] 得到 [fold0, fold1]           
             x_train_folds[3:] 得到 [fold3, fold4]            
             """

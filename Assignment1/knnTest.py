@@ -60,6 +60,56 @@ plt.rcParams['font.size'] = 16
 #-----------------------------------------------------------------------------------
 
 # torch.manual_seed(0)
+# dists = torch.tensor([
+#     [0.3, 0.4, 0.1],
+#     [0.1, 0.5, 0.5],
+#     [0.4, 0.1, 0.2],
+#     [0.2, 0.2, 0.4],
+#     [0.5, 0.3, 0.3],
+# ])
+# y_train = torch.tensor([0, 1, 0, 1, 2])
+# y_pred_expected = torch.tensor([1, 0, 0])
+# y_pred = predict_labels(dists, y_train, k=3)
+# correct = y_pred.tolist() == y_pred_expected.tolist()
+# print('Correct: ', correct)
+
+#-----------------------------------------------------------------------------------
+num_test = 10000
+num_train = 20
+num_classes = 5
+
+# Generate random training and test data
+torch.manual_seed(128)
+x_train = torch.rand(num_train, 2)
+y_train = torch.randint(num_classes, size=(num_train,))
+x_test = torch.rand(num_test, 2)
+classifier = KnnClassifier(x_train, y_train)
+
+# Plot predictions for different values of k
+for k in [1, 3, 5]:
+    y_test = classifier.predict(x_test, k=k)
+    plt.gcf().set_size_inches(8, 8)
+    class_colors = ['r', 'g', 'b', 'k', 'y']
+    train_colors = [class_colors[c] for c in y_train]
+    test_colors = [class_colors[c] for c in y_test]
+    plt.scatter(x_test[:, 0], x_test[:, 1],
+                color=test_colors, marker='o', s=32, alpha=0.05)
+    plt.scatter(x_train[:, 0], x_train[:, 1],
+                color=train_colors, marker='*', s=128.0)
+    plt.title('Predictions for k = %d' % k, size=16)
+    plt.show()
+
+torch.manual_seed(0)
+num_train = 5000
+num_test = 500
+x_train, y_train, x_test, y_test = eecs598.data.cifar10(num_train, num_test)
+
+classifier = KnnClassifier(x_train, y_train)
+classifier.check_accuracy(x_test, y_test, k=1)
+classifier.check_accuracy(x_test, y_test, k=5)
+#-----------------------------------------------------------------------------------
+
+# torch.manual_seed(0)
 # num_train = 5000
 # num_test = 500
 # x_train, y_train, x_test, y_test = eecs598.data.cifar10(num_train, num_test)
@@ -90,7 +140,7 @@ plt.rcParams['font.size'] = 16
 # classifier = KnnClassifier(x_train, y_train)
 # classifier.check_accuracy(x_test, y_test, k=best_k)
 #-------------------------------------------------------------------------------
-torch.manual_seed(0)
-x_train_all, y_train_all, x_test_all, y_test_all = eecs598.data.cifar10()
-classifier = KnnClassifier(x_train_all, y_train_all)
-classifier.check_accuracy(x_test_all, y_test_all, k=10)
+# torch.manual_seed(0)
+# x_train_all, y_train_all, x_test_all, y_test_all = eecs598.data.cifar10()
+# classifier = KnnClassifier(x_train_all, y_train_all)
+# classifier.check_accuracy(x_test_all, y_test_all, k=10)
