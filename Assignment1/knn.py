@@ -69,12 +69,12 @@ def predict_labels(distances: torch.Tensor, y_train: torch.Tensor, k: int = 1):
 
     y_pred = torch.zeros(num_test, dtype=torch.int64)
     # 按列求，代表了每个测试样本到所有训练样本的最小距离，top_k.shape = (k, num_test)，每列是一个测试样本的k个最近邻样本的索引
-    top_k = torch.topk(distances, k=k, dim=0, largest=False).indices
+    top_k_distances = torch.topk(distances, k=k, dim=0, largest=False).indices
 
     for j in range(num_test):
         #top_k[:, j] - 提取索引: 形状为[k]的一维张量, 再拿着这些索引去y_train中找对应标签，其中出现最多的即为预测
         #torch.mode若每个数字都只出现了一次就返回第一个
-        y_pred[j] = torch.mode(y_train[top_k[:, j]])[0].item()
+        y_pred[j] = torch.mode(y_train[top_k_distances[:, j]])[0].item()
 
     return y_pred
 
