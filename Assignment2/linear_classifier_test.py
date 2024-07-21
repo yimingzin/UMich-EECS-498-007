@@ -80,106 +80,106 @@ data_dict = eecs598.data.preprocess_cifar10(bias_trick=True, cuda=True, dtype=to
 # print('Validation accuracy: %.2f%%' % val_acc)
 #-----------------------------------------------------------------------------------------------
 
-### 参考论文
-learning_rates, regularization_strengths = svm_get_search_params()
-###
-num_models = len(learning_rates) * len(regularization_strengths)
-
-####
-# It is okay to comment out the following conditions when you are working on svm_get_search_params.
-# But, please do not forget to reset back to the original setting once you are done.
-if num_models > 25:
-  raise Exception("Please do not test/submit more than 25 items at once")
-elif num_models < 5:
-  raise Exception("Please present at least 5 parameter sets in your final ipynb")
-####
-
-
-i = 0
-# results is dictionary mapping tuples of the form
-# (learning_rate, regularization_strength) to tuples of the form
-# (train_acc, val_acc).
-results = {}
-best_val = -1.0   # The highest validation accuracy that we have seen so far.
-best_svm_model = None # The LinearSVM object that achieved the highest validation rate.
-# num_iters = 100 # number of iterations
-num_iters = 100
-
-for lr in learning_rates:
-  for reg in regularization_strengths:
-    i += 1
-    print('Training SVM %d / %d with learning_rate=%e and reg=%e'
-          % (i, num_models, lr, reg))
-
-    eecs598.reset_seed(0)
-    ####
-    cand_svm_model, cand_train_acc, cand_val_acc = test_one_param_set(LinearSVM(), data_dict, lr, reg, num_iters)
-    ####
-    if cand_val_acc > best_val:
-      best_val = cand_val_acc
-      best_svm_model = cand_svm_model # save the svm
-    results[(lr, reg)] = (cand_train_acc, cand_val_acc)
-
-
-# Print out results.
-for lr, reg in sorted(results):
-  train_acc, val_acc = results[(lr, reg)]
-  print('lr %e reg %e train accuracy: %f val accuracy: %f' % (
-         lr, reg, train_acc, val_acc))
-
-print('best validation accuracy achieved during cross-validation: %f' % best_val)
-
-# save the best model
-path = os.path.join('D:/PythonProject/UMichLearn/Assignment2', 'svm_best_model.pt')
-best_svm_model.save(path)
-
-x_scatter = [math.log10(x[0]) for x in results]
-y_scatter = [math.log10(x[1]) for x in results]
-
-# plot training accuracy
-marker_size = 100
-colors = [results[x][0] for x in results]
-plt.scatter(x_scatter, y_scatter, marker_size, c=colors, cmap='viridis')
-plt.colorbar()
-plt.xlabel('log learning rate')
-plt.ylabel('log regularization strength')
-plt.title('CIFAR-10 training accuracy')
-plt.gcf().set_size_inches(8, 5)
-plt.show()
-
-# plot validation accuracy
-colors = [results[x][1] for x in results] # default size of markers is 20
-plt.scatter(x_scatter, y_scatter, marker_size, c=colors, cmap='viridis')
-plt.colorbar()
-plt.xlabel('log learning rate')
-plt.ylabel('log regularization strength')
-plt.title('CIFAR-10 validation accuracy')
-plt.gcf().set_size_inches(8, 5)
-plt.show()
-
-y_test_pred = best_svm_model.predict(data_dict['X_test'])
-test_accuracy = torch.mean((data_dict['y_test'] == y_test_pred).double())
-print('linear SVM on raw pixels final test set accuracy: %f' % test_accuracy)
-
-w = best_svm_model.W[:-1,:] # strip out the bias
-w = w.reshape(3, 32, 32, 10)
-w = w.transpose(0, 2).transpose(1, 0)
-
-w_min, w_max = torch.min(w), torch.max(w)
-classes = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-for i in range(10):
-  plt.subplot(2, 5, i + 1)
-
-  # Rescale the weights to be between 0 and 255
-  wimg = 255.0 * (w[:, :, :, i].squeeze() - w_min) / (w_max - w_min)
-  plt.imshow(wimg.type(torch.uint8).cpu())
-  plt.axis('off')
-  plt.title(classes[i])
-plt.show()
+# ### 参考论文
+# learning_rates, regularization_strengths = svm_get_search_params()
+# ###
+# num_models = len(learning_rates) * len(regularization_strengths)
+#
+# ####
+# # It is okay to comment out the following conditions when you are working on svm_get_search_params.
+# # But, please do not forget to reset back to the original setting once you are done.
+# if num_models > 25:
+#   raise Exception("Please do not test/submit more than 25 items at once")
+# elif num_models < 5:
+#   raise Exception("Please present at least 5 parameter sets in your final ipynb")
+# ####
+#
+#
+# i = 0
+# # results is dictionary mapping tuples of the form
+# # (learning_rate, regularization_strength) to tuples of the form
+# # (train_acc, val_acc).
+# results = {}
+# best_val = -1.0   # The highest validation accuracy that we have seen so far.
+# best_svm_model = None # The LinearSVM object that achieved the highest validation rate.
+# # num_iters = 100 # number of iterations
+# num_iters = 100
+#
+# for lr in learning_rates:
+#   for reg in regularization_strengths:
+#     i += 1
+#     print('Training SVM %d / %d with learning_rate=%e and reg=%e'
+#           % (i, num_models, lr, reg))
+#
+#     eecs598.reset_seed(0)
+#     ####
+#     cand_svm_model, cand_train_acc, cand_val_acc = test_one_param_set(LinearSVM(), data_dict, lr, reg, num_iters)
+#     ####
+#     if cand_val_acc > best_val:
+#       best_val = cand_val_acc
+#       best_svm_model = cand_svm_model # save the svm
+#     results[(lr, reg)] = (cand_train_acc, cand_val_acc)
+#
+#
+# # Print out results.
+# for lr, reg in sorted(results):
+#   train_acc, val_acc = results[(lr, reg)]
+#   print('lr %e reg %e train accuracy: %f val accuracy: %f' % (
+#          lr, reg, train_acc, val_acc))
+#
+# print('best validation accuracy achieved during cross-validation: %f' % best_val)
+#
+# # save the best model
+# path = os.path.join('D:/PythonProject/UMichLearn/Assignment2', 'svm_best_model.pt')
+# best_svm_model.save(path)
+#
+# x_scatter = [math.log10(x[0]) for x in results]
+# y_scatter = [math.log10(x[1]) for x in results]
+#
+# # plot training accuracy
+# marker_size = 100
+# colors = [results[x][0] for x in results]
+# plt.scatter(x_scatter, y_scatter, marker_size, c=colors, cmap='viridis')
+# plt.colorbar()
+# plt.xlabel('log learning rate')
+# plt.ylabel('log regularization strength')
+# plt.title('CIFAR-10 training accuracy')
+# plt.gcf().set_size_inches(8, 5)
+# plt.show()
+#
+# # plot validation accuracy
+# colors = [results[x][1] for x in results] # default size of markers is 20
+# plt.scatter(x_scatter, y_scatter, marker_size, c=colors, cmap='viridis')
+# plt.colorbar()
+# plt.xlabel('log learning rate')
+# plt.ylabel('log regularization strength')
+# plt.title('CIFAR-10 validation accuracy')
+# plt.gcf().set_size_inches(8, 5)
+# plt.show()
+#
+# y_test_pred = best_svm_model.predict(data_dict['X_test'])
+# test_accuracy = torch.mean((data_dict['y_test'] == y_test_pred).double())
+# print('linear SVM on raw pixels final test set accuracy: %f' % test_accuracy)
+#
+# w = best_svm_model.W[:-1,:] # strip out the bias
+# w = w.reshape(3, 32, 32, 10)
+# w = w.transpose(0, 2).transpose(1, 0)
+#
+# w_min, w_max = torch.min(w), torch.max(w)
+# classes = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+# for i in range(10):
+#   plt.subplot(2, 5, i + 1)
+#
+#   # Rescale the weights to be between 0 and 255
+#   wimg = 255.0 * (w[:, :, :, i].squeeze() - w_min) / (w_max - w_min)
+#   plt.imshow(wimg.type(torch.uint8).cpu())
+#   plt.axis('off')
+#   plt.title(classes[i])
+# plt.show()
 #-----------------------------------------------------------------------------------------------
 #                                           Softmax                                            #
 #-----------------------------------------------------------------------------------------------
-#
+
 # W = 0.0001 * torch.randn(3073, 10, dtype=data_dict['X_val'].dtype, device=data_dict['X_val'].device)
 #
 # X_batch = data_dict['X_val'][:128]
@@ -233,7 +233,8 @@ plt.show()
 # D = data_dict['X_train'].shape[1]
 # C = 10
 #
-# # YOUR_TURN??: train_linear_classifier should be same as what you've implemented in the SVM section
+# # YOUR_TURN: train_linear_classifier should be same as what you've implemented in the SVM section
+# #检查数字稳定性
 # W_ones = torch.ones(D, C, device=device, dtype=dtype)
 # W, loss_hist = train_linear_classifier(softmax_loss_naive, W_ones,
 #                                        data_dict['X_train'],

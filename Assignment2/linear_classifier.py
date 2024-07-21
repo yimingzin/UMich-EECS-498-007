@@ -126,18 +126,17 @@ def softmax_loss_vectorized(
     scores_stable = scores - scores.max(dim=1, keepdim=True).values
     correct_scores = scores_stable[range(num_train), y]
     # e ^ (scores)
-    exp = torch.exp(scores_stable)
-    softmax = exp / exp.sum(dim=1, keepdim=True)
-
-
-    loss = -correct_scores + torch.log(torch.sum(exp, dim=1))
+    #计算某个样本在所有种类的E次方, 得到(num_train, )
+    exp_sum = torch.sum(torch.exp(scores_stable), dim=1)
+    #loss = -log( E^正确类别得分 / E^所有种类得分 )
+    loss = -torch.log(torch.exp(correct_scores) / exp_sum)
     loss = loss.sum()
     loss = loss / num_train + reg * torch.sum(W * W)
 
-    #计算梯度，把正确类别置为-1，和核心softmax相加 核心是e ^ (类别得分) / e ^ (所有类别得分)求和，
+    #计算梯度，把正确类别置为-1，和某个样本的 E^每一个类别对应的得分 / E^每个类别之和
     correct_matrix = torch.zeros_like(scores)
     correct_matrix[range(num_train), y] = -1
-    dW += torch.mm(X.t(), softmax + correct_matrix)
+    dW = torch.mm(X.t(), torch.exp(scores_stable) / exp_sum.reshape(-1, 1) + correct_matrix)
     dW = dW / num_train + 2 * reg * W
 
     return loss, dW
