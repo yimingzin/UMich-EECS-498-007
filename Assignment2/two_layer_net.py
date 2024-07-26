@@ -136,20 +136,20 @@ def nn_forward_backward(
     sum_exp = torch.sum(torch.exp(scores), dim=1)
     # loss计算参考softmax的计算
     loss = -torch.log(torch.exp(correct_scores) / sum_exp)
-    loss = loss.sum() / num_input + 0.5 * reg * (torch.sum(W1 * W1) + torch.sum(W2 * W2))
+    loss = loss.sum() / num_input + reg * (torch.sum(W1 * W1) + torch.sum(W2 * W2))
 
     grads = {}
     grad_scores = torch.exp(scores) / sum_exp.reshape(-1, 1)
     grad_scores[range(num_input), y] -= 1
     grad_scores /= num_input
 
-    grads['W2'] = torch.mm(hidden.t(), grad_scores) + reg * W2
+    grads['W2'] = torch.mm(hidden.t(), grad_scores) + 2 * reg * W2
     grads['b2'] = torch.sum(grad_scores, dim=0)
 
     grad_hidden = torch.mm(grad_scores, W2.t())
     grad_hidden[hidden <= 0] = 0
 
-    grads['W1'] = torch.mm(X.t(), grad_hidden) + reg * W1
+    grads['W1'] = torch.mm(X.t(), grad_hidden) + 2 * reg * W1
     grads['b1'] = torch.sum(grad_hidden, dim=0)
 
     return loss, grads
