@@ -134,17 +134,123 @@ def create_solver_instance(data_dict, dtype, device):
                         )
     return solver
 
-
-class FullConnectNet(object):
+class FullyConnectedNet(object):
     def __init__(
         self,
         hidden_dim,
-        input_dim = 100,
-        num_classes = 10,
-        weight_scale = 1e-2,
-        reg = 0.0,
-        dropout = 0.0,
-            
+        input_dim=3*32*32,
+        num_classes=10,
+        reg=0.0,
+        weight_scale=1e-2,
+        dropout=0.0,
+        seed=None,
+        dtype=torch.float,
+        device='cpu'
     ):
+        self.use_dropout = dropout != 0
+        self.layer_number = 1 + len(hidden_dim)
+        self.reg = reg
+        self.dtype = dtype
+        self.params = {}
 
+        self.params['W1'] = torch.normal(mean=0, std=weight_scale, size=(input_dim, hidden_dim[0]), dtype=dtype, device=device)
+        self.params['b1'] = torch.zeros(hidden_dim[0], dtype=dtype, device=device)
 
+        L = self.layer_number
+        for i in range(2, L):
+            self.params[f'W{i}'] = torch.normal(mean=0, std=weight_scale, size=(hidden_dim[i-2], hidden_dim[i-1]), dtype=dtype, device=device)
+            self.params[f'b{i}'] = torch.zeros(hidden_dim[i-1], dtype=dtype, device=device)
+
+        self.params[f'W{L}'] = torch.normal(mean=0, std=weight_scale, size=(hidden_dim[L - 2], num_classes), dtype=dtype, device=device)
+        self.params[f'b{L}'] = torch.zeros(num_classes, dtype=dtype, device=device)
+
+        self.dropout_params = {}
+        if self.use_dropout:
+            self.dropout_params = {'mode': 'train', 'p': dropout}
+            if seed is not None:
+                self.dropout_params['seed'] = seed
+
+    def save(self, path):
+        checkpoint = {
+            'reg': self.reg,
+            'dtype': self.dtype,
+            'params': self.params,
+            'num_layers': self.layer_number,
+            'ues_dropout': self.use_dropout,
+            'dropout_param': self.dropout_params,
+        }
+        torch.save(checkpoint, path)
+        print(f"Saved in {path}")
+
+    def load(self, path, dtype, device):
+        checkpoint = torch.load(path, map_location='cpu')
+        self.reg = checkpoint['reg']
+        self.dtype = dtype
+        self.params = checkpoint['params']
+        self.layer_number = checkpoint['num_layers']
+        self.use_dropout = checkpoint['use_dropout']
+        self.dropout_params = checkpoint['dropout_param']
+
+        for p in self.params:
+            self.params[p] = self.params[p].type(dtype).to(device)
+        print(f"load checkpoint in {path}")
+
+    def loss(self, X, y = None):
+        X = X.to(self.dtype)
+        mode = 'test' if y is None else 'train'
+
+        if self.use_dropout:
+            self.dropout_params['mode'] = mode
+
+        scores = None
+        L = self.layer_number
+        cache = []
+        h, cache0 = Linear_ReLU.forward(X, self.params['W1'], self.params['b1'])
+        cache.append(cache0)
+
+        for i in range(2, L):
+            h, cache_i = Linear_ReLU.forward(h, self.params[f'W{i}'], self.params[f'b{i}'])
+            cache.append(cache_i)
+        scores, cache_fin = Linear.forward(h, self.params[f'W{L}'], self.params[f'b{L}'])
+        cache.append(cache_fin)
+
+        # test mode
+        if mode == 'test':
+            return scores
+
+        loss, grads = 0.0, {}
+        loss, dscore = softmax_loss(scores, y)
+        for i in range(L):
+            loss += self.reg * torch.sum(self.params[f'W{i + 1}'] ** 2)
+
+        dh, grads[f'W{L}'], grads[f'b{L}'] = Linear.backward(dscore, cache[-1])
+        for i in range(L-1, 0, -1):
+            dh, grads[f'W{i}'], grads[f'b{i}'] = Linear_ReLU.backward(dh, cache[i-1])
+            grads[f'W{i}'] += 2 * self.reg * self.params[f'W{i}']
+        return loss, grads
+
+def get_three_layer_network_params():
+    ###############################################################
+    # TODO: Change weight_scale and learning_rate so your         #
+    # model achieves 100% training accuracy within 20 epochs.     #
+    ###############################################################
+    weight_scale = 5e-1   # Experiment with this!
+    learning_rate = 1e-2  # Experiment with this!
+    # Replace "pass" statement with your code
+    pass
+    ################################################################
+    #                             END OF YOUR CODE                 #
+    ################################################################
+    return weight_scale, learning_rate
+
+def get_five_layer_network_params():
+    ################################################################
+    # TODO: Change weight_scale and learning_rate so your          #
+    # model achieves 100% training accuracy within 20 epochs.      #
+    ################################################################
+    learning_rate = 2e-1  # Experiment with this!
+    weight_scale = 1e-1   # Experiment with this!
+    ################################################################
+    #                       END OF YOUR CODE                       #
+    ################################################################
+    return weight_scale, learning_rate
