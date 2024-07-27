@@ -190,3 +190,31 @@ plt.rcParams['figure.figsize'] = (10.0, 8.0)
 #     f = lambda _: model.loss(X, y)[0]
 #     grad_num = eecs598.grad.compute_numeric_gradient(f, model.params[name])
 #     print('%s relative error: %.2e' % (name, eecs598.grad.rel_error(grad_num, grads[name])))
+# ----------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------
+
+# reset_seed(0)
+# data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64)
+# # Create a solver instance that achieves 50% performance on the validation set
+# solver = create_solver_instance(data_dict=data_dict, dtype=torch.float64, device='cuda')
+# solver.train()
+#
+# # Run this cell to visualize training loss and train / val accuracy
+# plt.subplot(2, 1, 1)
+# plt.title('Training loss')
+# plt.plot(solver.loss_history, 'o')
+# plt.xlabel('Iteration')
+#
+# plt.subplot(2, 1, 2)
+# plt.title('Accuracy')
+# plt.plot(solver.train_acc_history, '-o', label='train')
+# plt.plot(solver.val_acc_history, '-o', label='val')
+# plt.plot([0.5] * len(solver.val_acc_history), 'k--')
+# plt.xlabel('Epoch')
+# plt.legend(loc='lower right')
+# plt.gcf().set_size_inches(15, 12)
+# plt.show()
+# ----------------------------------------------------------------------------------------------
+for i in range(2, 5):
+    print(i)
