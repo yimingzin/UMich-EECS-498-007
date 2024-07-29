@@ -258,3 +258,74 @@ def get_five_layer_network_params():
     learning_rate = 2e-1
     weight_scale = 1e-1
     return weight_scale, learning_rate
+
+
+def sgd(w, dw, config=None):
+    if config is None:
+        config = {}
+    config.setdefault('learning_rate', 1e-2)
+    w = w - config['learning_rate'] * dw
+
+    return w, config
+
+
+def sgd_momentum(w, dw, config=None):
+    if config is None:
+        config = {}
+    config.setdefault('learning_rate', 1e-2)
+    config.setdefault('momentum', 0.9)
+    v = config.get('velocity', torch.zeros_like(w))
+    '''
+       # Momentum update
+       v = mu * v - learning_rate * dw # integrate velocity
+       w += v # integrate position
+    '''
+
+    v = config['momentum'] * v - config['learning_rate'] * dw
+    w = w + v
+    # 累计梯度
+    config['velocity'] = v
+
+    return w, config
+
+
+def rmsprop(w, dw, config=None):
+    if config is None:
+        config = {}
+    config.setdefault('learning_rate', 1e-2)
+    config.setdefault('decay_rate', 0.99)
+    config.setdefault('epsilon', 1e-8)
+    config.setdefault('cache', torch.zeros_like(w))
+
+    cache = config['decay_rate'] * config['cache'] + (1 - config['decay_rate']) * (dw ** 2)
+    w = w - config['learning_rate'] * dw / (cache.sqrt() + config['epsilon'])
+
+    # update
+    config['cache'] = cache
+
+    return w, config
+
+def adam(w, dw, config = None):
+    if config is None:
+        config = {}
+    config.setdefault('learning_rate', 1e-3)
+    config.setdefault('beta_1', 0.9)
+    config.setdefault('beta_2', 0.999)
+    config.setdefault('epsilon', 1e-8)
+    config.setdefault('m', torch.zeros_like(w))
+    config.setdefault('v', torch.zeros_like(w))
+    config.setdefault('t', 0)
+
+    config['t'] += 1
+
+    # momentum
+    m = config['beta_1'] * config['m'] + (1 - config['beta_1']) * dw
+    m_hat = m / (1 - config['beta_1'] ** config['t'])
+    # rmsprop
+    v = config['beta_2'] * config['v'] + (1 - config['beta_2']) *(dw**2)
+    v_hat = v / (1 - config['beta_2'] ** config['t'])
+
+    next_w = w - config['learning_rate'] * m_hat / (v_hat.sqrt() + config['epsilon'])
+
+    config['m'], config['v'] = m, v
+    return next_w, config

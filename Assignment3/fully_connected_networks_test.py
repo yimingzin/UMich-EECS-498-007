@@ -277,57 +277,212 @@ plt.rcParams['figure.figsize'] = (10.0, 8.0)
 # plt.ylabel('Training loss')
 # plt.show()
 # ----------------------------------------------------------------------------------------------
+# reset_seed(0)
+# data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64)
+# num_train = 50
+# small_data = {
+#   'X_train': data_dict['X_train'][:num_train],
+#   'y_train': data_dict['y_train'][:num_train],
+#   'X_val': data_dict['X_val'],
+#   'y_val': data_dict['y_val'],
+# }
+#
+#
+# # Update parameters in get_three_layer_network_params
+# weight_scale, learning_rate = get_five_layer_network_params()
+#
+# # Run models and solver with parameters
+# model = FullyConnectedNet([100, 100, 100, 100],
+#                 weight_scale=weight_scale, dtype=torch.float32, device='cuda')
+# solver = Solver(model, small_data,
+#                 print_every=10, num_epochs=20, batch_size=25,
+#                 optim_config={
+#                   'learning_rate': learning_rate,
+#                 },
+#                 device='cuda',
+#          )
+# # Turn off keep_best_params to allow final weights to be saved, instead of best weights on validation set.
+# solver.train(return_best_params=False)
+#
+# plt.plot(solver.loss_history, 'o')
+# plt.title('Training loss history')
+# plt.xlabel('Iteration')
+# plt.ylabel('Training loss')
+# plt.show()
+#
+# # Set path
+# path = os.path.join('D:/PythonProject/UMichLearn/Assignment3', 'best_overfit_five_layer_net.pth')
+# solver.model.save(path)
+#
+#
+# # Create a new instance  -- Note that hidden dims being different doesn't matter here.
+# model = FullyConnectedNet(hidden_dim=[100, ], dtype=torch.float32, device='cuda')
+# solver = Solver(model, small_data,
+#                 print_every=10, num_epochs=20, batch_size=25,
+#                 optim_config={
+#                   'learning_rate': learning_rate,
+#                 },
+#                 device='cuda',
+#          )
+#
+# # Load model
+# solver.model.load(path, dtype=torch.float32, device='cuda')
+#
+# # Evaluate on validation set
+# accuracy = solver.check_accuracy(solver.X_train, solver.y_train)
+# print(f"Saved model's accuracy on small train is {accuracy}")
+# ----------------------------------------------------------------------------------------------
+# from fully_connected_networks import sgd_momentum
+#
+# reset_seed(0)
+#
+# N, D = 4, 5
+# w = torch.linspace(-0.4, 0.6, steps=N*D, dtype=torch.float64, device='cuda').reshape(N, D)
+# dw = torch.linspace(-0.6, 0.4, steps=N*D, dtype=torch.float64, device='cuda').reshape(N, D)
+# v = torch.linspace(0.6, 0.9, steps=N*D, dtype=torch.float64, device='cuda').reshape(N, D)
+#
+# config = {'learning_rate': 1e-3, 'velocity': v}
+# next_w, _ = sgd_momentum(w, dw, config=config)
+#
+# expected_next_w = torch.tensor([
+#   [ 0.1406,      0.20738947,  0.27417895,  0.34096842,  0.40775789],
+#   [ 0.47454737,  0.54133684,  0.60812632,  0.67491579,  0.74170526],
+#   [ 0.80849474,  0.87528421,  0.94207368,  1.00886316,  1.07565263],
+#   [ 1.14244211,  1.20923158,  1.27602105,  1.34281053,  1.4096    ]],
+#    dtype=torch.float64, device='cuda')
+# expected_velocity = torch.tensor([
+#   [ 0.5406,      0.55475789,  0.56891579, 0.58307368,  0.59723158],
+#   [ 0.61138947,  0.62554737,  0.63970526,  0.65386316,  0.66802105],
+#   [ 0.68217895,  0.69633684,  0.71049474,  0.72465263,  0.73881053],
+#   [ 0.75296842,  0.76712632,  0.78128421,  0.79544211,  0.8096    ]],
+#    dtype=torch.float64, device='cuda')
+#
+# # Should see relative errors around e-8 or less
+# print('next_w error: ', eecs598.grad.rel_error(next_w, expected_next_w))
+# print('velocity error: ', eecs598.grad.rel_error(expected_velocity, config['velocity']))
+# ----------------------------------------------------------------------------------------------
+# from fully_connected_networks import FullyConnectedNet, sgd, sgd_momentum
+#
+# reset_seed(0)
+# data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64)
+#
+# num_train = 4000
+# small_data = {
+#   'X_train': data_dict['X_train'][:num_train],
+#   'y_train': data_dict['y_train'][:num_train],
+#   'X_val': data_dict['X_val'],
+#   'y_val': data_dict['y_val'],
+# }
+#
+# solvers = {}
+#
+# for update_rule_name, update_rule_fn in [('sgd', sgd), ('sgd_momentum', sgd_momentum)]:
+#   print('running with ', update_rule_name)
+#   model = FullyConnectedNet([100, 100, 100, 100, 100], weight_scale=5e-2,
+#                             dtype=torch.float32, device='cuda')
+#
+#   solver = Solver(model, small_data,
+#                   num_epochs=5, batch_size=100,
+#                   update_rule=update_rule_fn,
+#                   optim_config={
+#                     'learning_rate': 5e-2,
+#                   },
+#                   print_every=1000,
+#                   verbose=True,
+#                   device='cuda')
+#   solvers[update_rule_name] = solver
+#   solver.train()
+#   print()
+#
+# plt.subplot(3, 1, 1)
+# plt.title('Training loss')
+# plt.xlabel('Iteration')
+# for update_rule, solver in solvers.items():
+#   plt.plot(solver.loss_history, 'o', label="loss_%s" % update_rule)
+# plt.legend(loc='lower center', ncol=4)
+#
+# plt.subplot(3, 1, 2)
+# plt.title('Training accuracy')
+# plt.xlabel('Epoch')
+# for update_rule, solver in solvers.items():
+#   plt.plot(solver.train_acc_history, '-o', label="train_acc_%s" % update_rule)
+# plt.legend(loc='lower center', ncol=4)
+#
+#
+# plt.subplot(3, 1, 3)
+# plt.title('Validation accuracy')
+# plt.xlabel('Epoch')
+# for update_rule, solver in solvers.items():
+#   plt.plot(solver.val_acc_history, '-o', label="val_acc_%s" % update_rule)
+# plt.legend(loc='lower center', ncol=4)
+#
+# plt.gcf().set_size_inches(10, 20)
+# plt.show()
+# ----------------------------------------------------------------------------------------------
+# # Test RMSProp implementation
+# from fully_connected_networks import rmsprop
+#
+# reset_seed(0)
+#
+# N, D = 4, 5
+# w = torch.linspace(-0.4, 0.6, steps=N*D, dtype=torch.float64, device='cuda').reshape(N, D)
+# dw = torch.linspace(-0.6, 0.4, steps=N*D, dtype=torch.float64, device='cuda').reshape(N, D)
+# cache = torch.linspace(0.6, 0.9, steps=N*D, dtype=torch.float64, device='cuda').reshape(N, D)
+#
+# config = {'learning_rate': 1e-2, 'cache': cache}
+# next_w, _ = rmsprop(w, dw, config=config)
+#
+# expected_next_w = torch.tensor([
+#   [-0.39223849, -0.34037513, -0.28849239, -0.23659121, -0.18467247],
+#   [-0.132737,   -0.08078555, -0.02881884,  0.02316247,  0.07515774],
+#   [ 0.12716641,  0.17918792,  0.23122175,  0.28326742,  0.33532447],
+#   [ 0.38739248,  0.43947102,  0.49155973,  0.54365823,  0.59576619]],
+#    dtype=torch.float64, device='cuda')
+# expected_cache = torch.tensor([
+#   [ 0.5976,      0.6126277,   0.6277108,   0.64284931,  0.65804321],
+#   [ 0.67329252,  0.68859723,  0.70395734,  0.71937285,  0.73484377],
+#   [ 0.75037008,  0.7659518,   0.78158892,  0.79728144,  0.81302936],
+#   [ 0.82883269,  0.84469141,  0.86060554,  0.87657507,  0.8926    ]],
+#    dtype=torch.float64, device='cuda')
+#
+# print('next_w error: ', eecs598.grad.rel_error(expected_next_w, next_w))
+# print('cache error: ', eecs598.grad.rel_error(expected_cache, config['cache']))
+
+# ----------------------------------------------------------------------------------------------
+# Test Adam implementation
+from fully_connected_networks import adam
+
 reset_seed(0)
-data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64)
-num_train = 50
-small_data = {
-  'X_train': data_dict['X_train'][:num_train],
-  'y_train': data_dict['y_train'][:num_train],
-  'X_val': data_dict['X_val'],
-  'y_val': data_dict['y_val'],
-}
 
+N, D = 4, 5
+w = torch.linspace(-0.4, 0.6, steps=N*D, dtype=torch.float64, device='cuda').reshape(N, D)
+dw = torch.linspace(-0.6, 0.4, steps=N*D, dtype=torch.float64, device='cuda').reshape(N, D)
+m = torch.linspace(0.6, 0.9, steps=N*D, dtype=torch.float64, device='cuda').reshape(N, D)
+v = torch.linspace(0.7, 0.5, steps=N*D, dtype=torch.float64, device='cuda').reshape(N, D)
 
-# Update parameters in get_three_layer_network_params
-weight_scale, learning_rate = get_five_layer_network_params()
+config = {'learning_rate': 1e-2, 'm': m, 'v': v, 't': 5}
+next_w, _ = adam(w, dw, config=config)
 
-# Run models and solver with parameters
-model = FullyConnectedNet([100, 100, 100, 100],
-                weight_scale=weight_scale, dtype=torch.float32, device='cuda')
-solver = Solver(model, small_data,
-                print_every=10, num_epochs=20, batch_size=25,
-                optim_config={
-                  'learning_rate': learning_rate,
-                },
-                device='cuda',
-         )
-# Turn off keep_best_params to allow final weights to be saved, instead of best weights on validation set.
-solver.train(return_best_params=False)
+expected_next_w = torch.tensor([
+  [-0.40094747, -0.34836187, -0.29577703, -0.24319299, -0.19060977],
+  [-0.1380274,  -0.08544591, -0.03286534,  0.01971428,  0.0722929],
+  [ 0.1248705,   0.17744702,  0.23002243,  0.28259667,  0.33516969],
+  [ 0.38774145,  0.44031188,  0.49288093,  0.54544852,  0.59801459]],
+   dtype=torch.float64, device='cuda')
+expected_v = torch.tensor([
+  [ 0.69966,     0.68908382,  0.67851319,  0.66794809,  0.65738853,],
+  [ 0.64683452,  0.63628604,  0.6257431,   0.61520571,  0.60467385,],
+  [ 0.59414753,  0.58362676,  0.57311152,  0.56260183,  0.55209767,],
+  [ 0.54159906,  0.53110598,  0.52061845,  0.51013645,  0.49966,   ]],
+   dtype=torch.float64, device='cuda')
+expected_m = torch.tensor([
+  [ 0.48,        0.49947368,  0.51894737,  0.53842105,  0.55789474],
+  [ 0.57736842,  0.59684211,  0.61631579,  0.63578947,  0.65526316],
+  [ 0.67473684,  0.69421053,  0.71368421,  0.73315789,  0.75263158],
+  [ 0.77210526,  0.79157895,  0.81105263,  0.83052632,  0.85      ]],
+   dtype=torch.float64, device='cuda')
 
-plt.plot(solver.loss_history, 'o')
-plt.title('Training loss history')
-plt.xlabel('Iteration')
-plt.ylabel('Training loss')
-plt.show()
-
-# Set path
-path = os.path.join('D:/PythonProject/UMichLearn/Assignment3', 'best_overfit_five_layer_net.pth')
-solver.model.save(path)
-
-
-# Create a new instance  -- Note that hidden dims being different doesn't matter here.
-model = FullyConnectedNet(hidden_dim=[100, ], dtype=torch.float32, device='cuda')
-solver = Solver(model, small_data,
-                print_every=10, num_epochs=20, batch_size=25,
-                optim_config={
-                  'learning_rate': learning_rate,
-                },
-                device='cuda',
-         )
-
-# Load model
-solver.model.load(path, dtype=torch.float32, device='cuda')
-
-# Evaluate on validation set
-accuracy = solver.check_accuracy(solver.X_train, solver.y_train)
-print(f"Saved model's accuracy on small train is {accuracy}")
+# You should see relative errors around e-7 or less
+print('next_w error: ', eecs598.grad.rel_error(expected_next_w, next_w))
+print('v error: ', eecs598.grad.rel_error(expected_v, config['v']))
+print('m error: ', eecs598.grad.rel_error(expected_m, config['m']))
