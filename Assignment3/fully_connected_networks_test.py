@@ -1,3 +1,5 @@
+import os
+
 import eecs598
 import torch
 import torchvision
@@ -9,6 +11,7 @@ import math
 from a3_helper import svm_loss, softmax_loss
 from eecs598 import reset_seed, Solver
 from fully_connected_networks import *
+from eecs598 import *
 
 
 plt.rcParams['font.size'] = 16
@@ -216,30 +219,30 @@ plt.rcParams['figure.figsize'] = (10.0, 8.0)
 # plt.gcf().set_size_inches(15, 12)
 # plt.show()
 # ----------------------------------------------------------------------------------------------
-reset_seed(0)
-N, D, H1, H2, C = 2, 15, 20, 30, 10
-X = torch.randn(N, D, dtype=torch.float64, device='cuda')
-y = torch.randint(C, size=(N,), dtype=torch.int64, device='cuda')
-
-for reg in [0, 3.14]:
-  print('Running check with reg = ', reg)
-  model = FullyConnectedNet(
-        [H1, H2],
-        input_dim=D,
-        num_classes=C,
-        reg=reg,
-        weight_scale=5e-2,
-        dtype=torch.float64,
-        device='cuda'
-  )
-
-  loss, grads = model.loss(X, y)
-  print('Initial loss: ', loss.item())
-
-  for name in sorted(grads):
-    f = lambda _: model.loss(X, y)[0]
-    grad_num = eecs598.grad.compute_numeric_gradient(f, model.params[name])
-    print('%s relative error: %.2e' % (name, eecs598.grad.rel_error(grad_num, grads[name])))
+# reset_seed(0)
+# N, D, H1, H2, C = 2, 15, 20, 30, 10
+# X = torch.randn(N, D, dtype=torch.float64, device='cuda')
+# y = torch.randint(C, size=(N,), dtype=torch.int64, device='cuda')
+#
+# for reg in [0, 3.14]:
+#   print('Running check with reg = ', reg)
+#   model = FullyConnectedNet(
+#         [H1, H2],
+#         input_dim=D,
+#         num_classes=C,
+#         reg=reg,
+#         weight_scale=5e-2,
+#         dtype=torch.float64,
+#         device='cuda'
+#   )
+#
+#   loss, grads = model.loss(X, y)
+#   print('Initial loss: ', loss.item())
+#
+#   for name in sorted(grads):
+#     f = lambda _: model.loss(X, y)[0]
+#     grad_num = eecs598.grad.compute_numeric_gradient(f, model.params[name])
+#     print('%s relative error: %.2e' % (name, eecs598.grad.rel_error(grad_num, grads[name])))
 # ----------------------------------------------------------------------------------------------
 # # TODO: Use a three-layer Net to overfit 50 training examples by
 # # tweaking just the learning rate and initialization scale.
@@ -274,35 +277,57 @@ for reg in [0, 3.14]:
 # plt.ylabel('Training loss')
 # plt.show()
 # ----------------------------------------------------------------------------------------------
-# reset_seed(0)
-# data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64)
-# num_train = 50
-# small_data = {
-#   'X_train': data_dict['X_train'][:num_train],
-#   'y_train': data_dict['y_train'][:num_train],
-#   'X_val': data_dict['X_val'],
-#   'y_val': data_dict['y_val'],
-# }
-#
-#
-# # Update parameters in get_three_layer_network_params
-# weight_scale, learning_rate = get_five_layer_network_params()
-#
-# # Run models and solver with parameters
-# model = FullyConnectedNet([100, 100, 100, 100],
-#                 weight_scale=weight_scale, dtype=torch.float32, device='cuda')
-# solver = Solver(model, small_data,
-#                 print_every=10, num_epochs=20, batch_size=25,
-#                 optim_config={
-#                   'learning_rate': learning_rate,
-#                 },
-#                 device='cuda',
-#          )
-# # Turn off keep_best_params to allow final weights to be saved, instead of best weights on validation set.
-# solver.train(return_best_params=False)
-#
-# plt.plot(solver.loss_history, 'o')
-# plt.title('Training loss history')
-# plt.xlabel('Iteration')
-# plt.ylabel('Training loss')
-# plt.show()
+reset_seed(0)
+data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64)
+num_train = 50
+small_data = {
+  'X_train': data_dict['X_train'][:num_train],
+  'y_train': data_dict['y_train'][:num_train],
+  'X_val': data_dict['X_val'],
+  'y_val': data_dict['y_val'],
+}
+
+
+# Update parameters in get_three_layer_network_params
+weight_scale, learning_rate = get_five_layer_network_params()
+
+# Run models and solver with parameters
+model = FullyConnectedNet([100, 100, 100, 100],
+                weight_scale=weight_scale, dtype=torch.float32, device='cuda')
+solver = Solver(model, small_data,
+                print_every=10, num_epochs=20, batch_size=25,
+                optim_config={
+                  'learning_rate': learning_rate,
+                },
+                device='cuda',
+         )
+# Turn off keep_best_params to allow final weights to be saved, instead of best weights on validation set.
+solver.train(return_best_params=False)
+
+plt.plot(solver.loss_history, 'o')
+plt.title('Training loss history')
+plt.xlabel('Iteration')
+plt.ylabel('Training loss')
+plt.show()
+
+# Set path
+path = os.path.join('D:/PythonProject/UMichLearn/Assignment3', 'best_overfit_five_layer_net.pth')
+solver.model.save(path)
+
+
+# Create a new instance  -- Note that hidden dims being different doesn't matter here.
+model = FullyConnectedNet(hidden_dim=[100, ], dtype=torch.float32, device='cuda')
+solver = Solver(model, small_data,
+                print_every=10, num_epochs=20, batch_size=25,
+                optim_config={
+                  'learning_rate': learning_rate,
+                },
+                device='cuda',
+         )
+
+# Load model
+solver.model.load(path, dtype=torch.float32, device='cuda')
+
+# Evaluate on validation set
+accuracy = solver.check_accuracy(solver.X_train, solver.y_train)
+print(f"Saved model's accuracy on small train is {accuracy}")
