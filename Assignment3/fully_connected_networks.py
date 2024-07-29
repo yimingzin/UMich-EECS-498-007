@@ -260,72 +260,99 @@ def get_five_layer_network_params():
     return weight_scale, learning_rate
 
 
-def sgd(w, dw, config=None):
+def sgd(w, dw, config = None):
     if config is None:
         config = {}
     config.setdefault('learning_rate', 1e-2)
-    w = w - config['learning_rate'] * dw
+    w = w - dw * config['learning_rate']
 
     return w, config
 
 
-def sgd_momentum(w, dw, config=None):
+def sgd_momentum(w, dw, config = None):
     if config is None:
         config = {}
     config.setdefault('learning_rate', 1e-2)
-    config.setdefault('momentum', 0.9)
-    v = config.get('velocity', torch.zeros_like(w))
-    '''
-       # Momentum update
-       v = mu * v - learning_rate * dw # integrate velocity
-       w += v # integrate position
-    '''
+    config.setdefault('mu', 0.9)
+    config.setdefault('velocity', torch.zeros_like(w))
+    v = config['mu'] * config['velocity'] - config['learning_rate'] * dw
+    next_w = w + v
 
-    v = config['momentum'] * v - config['learning_rate'] * dw
-    w = w + v
-    # 累计梯度
     config['velocity'] = v
+    return next_w, config
 
-    return w, config
-
-
-def rmsprop(w, dw, config=None):
+def rmsprop(w, dw, config = None):
     if config is None:
         config = {}
     config.setdefault('learning_rate', 1e-2)
     config.setdefault('decay_rate', 0.99)
-    config.setdefault('epsilon', 1e-8)
     config.setdefault('cache', torch.zeros_like(w))
+    config.setdefault('epsilon', 1e-8)
 
     cache = config['decay_rate'] * config['cache'] + (1 - config['decay_rate']) * (dw ** 2)
-    w = w - config['learning_rate'] * dw / (cache.sqrt() + config['epsilon'])
+    next_w = w - config['learning_rate'] * dw / torch.sqrt(cache) + config['epsilon']
 
-    # update
     config['cache'] = cache
-
-    return w, config
+    return next_w, config
 
 def adam(w, dw, config = None):
     if config is None:
         config = {}
     config.setdefault('learning_rate', 1e-3)
-    config.setdefault('beta_1', 0.9)
-    config.setdefault('beta_2', 0.999)
-    config.setdefault('epsilon', 1e-8)
+    config.setdefault('beta1', 0.9)
+    config.setdefault('beta2', 0.999)
     config.setdefault('m', torch.zeros_like(w))
     config.setdefault('v', torch.zeros_like(w))
+    config.setdefault('epsilon', 1e-8)
     config.setdefault('t', 0)
 
     config['t'] += 1
 
-    # momentum
-    m = config['beta_1'] * config['m'] + (1 - config['beta_1']) * dw
-    m_hat = m / (1 - config['beta_1'] ** config['t'])
-    # rmsprop
-    v = config['beta_2'] * config['v'] + (1 - config['beta_2']) *(dw**2)
-    v_hat = v / (1 - config['beta_2'] ** config['t'])
+    m = config['beta1'] * config['m'] + (1 - config['beta1']) * dw
+    m_hat = m / (1 - config['beta1'] ** config['t'])
 
-    next_w = w - config['learning_rate'] * m_hat / (v_hat.sqrt() + config['epsilon'])
+    v = config['beta2'] * config['v'] + (1 - config['beta2']) * (dw ** 2)
+    v_hat = v / (1 - config['beta2'] ** config['t'])
+
+    next_w = w - config['learning_rate'] * m_hat / (torch.sqrt(v_hat) + config['epsilon'])
 
     config['m'], config['v'] = m, v
     return next_w, config
+
+class Dropout(object):
+    @staticmethod
+    def forward(x, dropout_param):
+        mode, p = dropout_param['mode'], dropout_param['p']
+        if 'seed' in dropout_param:
+            torch.manual_seed(dropout_param['seed'])
+
+        mask = None
+        out = None
+
+        # 如果模式为测试，则直接正向传递，不需要关闭神经元
+        if mode == 'test':
+            out = x
+        # 模式为训练需要随机关闭神经元, torch.rand在(0, 1)随机生成x.shape的随机数, 取 >p的为true, 再除以1-p扩大他们保持期望
+        # 如果p = 0.3 则保持原来的70%不分
+        elif mode == 'train':
+            mask = (torch.rand(x.shape) > p) / (1-p)
+            mask = mask.cuda()
+            out = x * mask
+
+        cache = (dropout_param, mask)
+        return out, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        dropout_param, mask = cache
+        mode = dropout_param['mode']
+
+        dx = None
+
+        if mode == 'test':
+            dx = dout
+        # 梯度反向传播时，掩码会继续应用, 以确保梯度只通过未被丢弃的神经元
+        elif mode == 'train':
+            dx = mask * dout
+
+        return dx
