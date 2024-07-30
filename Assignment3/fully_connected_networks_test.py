@@ -62,6 +62,7 @@ plt.rcParams['figure.figsize'] = (10.0, 8.0)
 # print('db error: ', eecs598.grad.rel_error(db_num, db))
 
 # ----------------------------------------------------------------------------------------------
+# # Test the ReLU.forward function
 # reset_seed(0)
 # x = torch.linspace(-0.5, 0.5, steps=12, dtype=torch.float64, device='cuda')
 # x = x.reshape(3, 4)
@@ -77,6 +78,7 @@ plt.rcParams['figure.figsize'] = (10.0, 8.0)
 # print('Testing ReLU.forward function:')
 # print('difference: ', eecs598.grad.rel_error(out, correct_out))
 # ----------------------------------------------------------------------------------------------
+# # Test ReLU.backward function:
 # reset_seed(0)
 # x = torch.randn(10, 10, dtype=torch.float64, device='cuda')
 # dout = torch.randn(*x.shape, dtype=torch.float64, device='cuda')
@@ -487,19 +489,100 @@ plt.rcParams['figure.figsize'] = (10.0, 8.0)
 # print('v error: ', eecs598.grad.rel_error(expected_v, config['v']))
 # print('m error: ', eecs598.grad.rel_error(expected_m, config['m']))
 # ----------------------------------------------------------------------------------------------
-from fully_connected_networks import Dropout
+# from fully_connected_networks import Dropout
+#
+# reset_seed(0)
+# x = torch.randn(500, 500, dtype=torch.float64, device='cuda') + 10
+#
+# for p in [0.25, 0.4, 0.7]:
+#   out, _ = Dropout.forward(x, {'mode': 'train', 'p': p})
+#   out_test, _ = Dropout.forward(x, {'mode': 'test', 'p': p})
+#
+#   print('Running tests with p = ', p)
+#   print('Mean of input: ', x.mean().item())
+#   print('Mean of train-time output: ', out.mean().item())
+#   print('Mean of test-time output: ', out_test.mean().item())
+#   print('Fraction of train-time output set to zero: ', (out == 0).type(torch.float32).mean().item())
+#   print('Fraction of test-time output set to zero: ', (out_test == 0).type(torch.float32).mean().item())
+#   print()
+# ----------------------------------------------------------------------------------------------
+# from fully_connected_networks import FullyConnectedNet
+#
+# reset_seed(0)
+#
+# N, D, H1, H2, C = 2, 15, 20, 30, 10
+# X = torch.randn(N, D, dtype=torch.float64, device='cuda')
+# y = torch.randint(C, size=(N,), dtype=torch.int64, device='cuda')
+#
+# for dropout in [0, 0.25, 0.5]:
+#   print('Running check with dropout = ', dropout)
+#   model = FullyConnectedNet([H1, H2], input_dim=D, num_classes=C,
+#                             weight_scale=5e-2, dropout=dropout,
+#                             seed=0, dtype=torch.float64, device='cuda')
+#
+#   loss, grads = model.loss(X, y)
+#   print('Initial loss: ', loss.item())
+#
+#   # Relative errors should be around e-5 or less.
+#   for name in sorted(grads):
+#     f = lambda _: model.loss(X, y)[0]
+#     grad_num = eecs598.grad.compute_numeric_gradient(f, model.params[name])
+#     print('%s relative error: %.2e' % (name, eecs598.grad.rel_error(grad_num, grads[name])))
+#   print()
+# ----------------------------------------------------------------------------------------------
+from fully_connected_networks import FullyConnectedNet
 
+# Train two identical nets, one with dropout and one without
 reset_seed(0)
-x = torch.randn(500, 500, dtype=torch.float64, device='cuda') + 10
+data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64)
+num_train = 20000
+small_data = {
+  'X_train': data_dict['X_train'][:num_train],
+  'y_train': data_dict['y_train'][:num_train],
+  'X_val': data_dict['X_val'],
+  'y_val': data_dict['y_val'],
+}
 
-for p in [0.25, 0.4, 0.7]:
-  out, _ = Dropout.forward(x, {'mode': 'train', 'p': p})
-  out_test, _ = Dropout.forward(x, {'mode': 'test', 'p': p})
+solvers = {}
+dropout_choices = [0, 0, 0.5]
+width_choices = [256, 512, 512]
+for dropout, width in zip(dropout_choices, width_choices):
+# for dropout in dropout_choices:
+  model = FullyConnectedNet([width], dropout=dropout, dtype=torch.float32, device='cuda')
+  print('Training a model with dropout=%.2f and width=%d' % (dropout, width))
 
-  print('Running tests with p = ', p)
-  print('Mean of input: ', x.mean().item())
-  print('Mean of train-time output: ', out.mean().item())
-  print('Mean of test-time output: ', out_test.mean().item())
-  print('Fraction of train-time output set to zero: ', (out == 0).type(torch.float32).mean().item())
-  print('Fraction of test-time output set to zero: ', (out_test == 0).type(torch.float32).mean().item())
+  solver = Solver(model, small_data,
+                  num_epochs=100, batch_size=512,
+                  update_rule=adam,
+                  optim_config={
+                    'learning_rate': 5e-3,
+                  },
+                  print_every=100000, print_acc_every=10,
+                  verbose=True, device='cuda')
+  solver.train()
+  solvers[(dropout, width)] = solver
   print()
+
+plt.subplot(2, 1, 1)
+for (dropout, width), solver in solvers.items():
+  train_acc = solver.train_acc_history
+  label = 'dropout=%.2f, width=%d' % (dropout, width)
+  plt.plot(train_acc, 'o', label=label)
+plt.title('Train accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend(ncol=2, loc='lower right')
+
+plt.subplot(2, 1, 2)
+for (dropout, width), solver in solvers.items():
+  val_acc = solver.val_acc_history
+  label = 'dropout=%.2f, width=%d' % (dropout, width)
+  plt.plot(val_acc, 'o', label=label)
+plt.ylim(0.4, 0.52)
+plt.title('Val accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend(ncol=2, loc='lower right')
+
+plt.gcf().set_size_inches(10, 15)
+plt.show()

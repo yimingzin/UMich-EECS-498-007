@@ -6,18 +6,20 @@ from eecs598 import Solver
 class Linear(object):
     @staticmethod
     def forward(x, w, b):
-        num_input = x.shape[0]
-        x_flat = x.reshape(num_input, -1)
-
-        out = torch.mm(x_flat, w) + b
+        out = None
         cache = (x, w, b)
+        num_input = x.shape[0]
+
+        x_flat = x.reshape(num_input, -1)
+        out = torch.mm(x_flat, w) + b
+
         return out, cache
 
     @staticmethod
     def backward(dout, cache):
-        dx, dw, db = None, None, None
         x, w, b = cache
         num_input = x.shape[0]
+        dx, dw, db = None, None, None
         x_flat = x.reshape(num_input, -1)
 
         dx = torch.mm(dout, w.t()).reshape(x.shape)
@@ -47,10 +49,10 @@ class Linear_ReLU(object):
     @staticmethod
     def forward(x, w, b):
         out_linear, cache_linear = Linear.forward(x, w, b)
-        out, cache_relu = ReLU.forward(out_linear)
+        out_relu, cache_relu = ReLU.forward(out_linear)
         cache = (cache_linear, cache_relu)
 
-        return out, cache
+        return out_relu, cache
 
     @staticmethod
     def backward(dout, cache):
@@ -74,7 +76,6 @@ class TwoLayerNet(object):
     ):
         self.params = {}
         self.reg = reg
-        self.dtype = dtype
 
         self.params['W1'] = torch.normal(mean=0, std=weight_scale, size=(input_dim, hidden_dim), dtype=dtype,
                                          device=device)
@@ -93,35 +94,34 @@ class TwoLayerNet(object):
 
     def load(self, path, dtype, device):
         checkpoint = torch.load(path, map_location='cpu')
-        self.params = checkpoint['params']
+        self.params['params'] = checkpoint['params']
         self.reg = checkpoint['reg']
-
         for p in self.params:
             self.params[p] = self.params[p].type(dtype).to(device)
-        print("load checkpoint in {}".format(path))
+
+        print("checkpoint saved in {}".format(path))
 
     def loss(self, X, y=None):
         W1, b1 = self.params['W1'], self.params['b1']
         W2, b2 = self.params['W2'], self.params['b2']
-        num_input, input_dim = X.shape
 
-        out_one, cache_one = Linear_ReLU.forward(X, W1, b1)
-        scores, cache_two = Linear.forward(out_one, W2, b2)
+        out_1, cache_1 = Linear_ReLU.forward(X, W1, b1)
+        scores, cache_2 = Linear.forward(out_1, W2, b2)
 
         if y is None:
             return scores
 
         loss, grads = 0.0, {}
-        loss, dscores = softmax_loss(scores, y)
 
+        loss, dout = softmax_loss(scores, y)
         loss += self.reg * (torch.sum(W1 * W1) + torch.sum(W2 * W2))
 
-        dhidden, dW2, db2 = Linear.backward(dscores, cache_two)
-        dx, dW1, db1 = Linear_ReLU.backward(dhidden, cache_one)
+        dhidden, dW2, db2 = Linear.backward(dout, cache_2)
+        dx, dW1, db1 = Linear_ReLU.backward(dhidden, cache_1)
 
-        grads['W1'] = dW1 + 2 * self.reg * W1
+        grads['W1'] = dW1 + 2 * self.reg * self.params['W1']
         grads['b1'] = db1
-        grads['W2'] = dW2 + 2 * self.reg * W2
+        grads['W2'] = dW2 + 2 * self.reg * self.params['W2']
         grads['b2'] = db2
 
         return loss, grads
@@ -143,24 +143,25 @@ class FullyConnectedNet(object):
         self.params = {}
         self.num_layers = len(hidden_dim) + 1
         self.reg = reg
-        self.use_dropout = dropout != 0
+        self.use_dropout = dropout != 0.0
         self.dtype = dtype
+        self.dropout_params = {}
 
         self.params['W1'] = torch.normal(mean=0, std=weight_scale, size=(input_dim, hidden_dim[0]), dtype=dtype,
                                          device=device)
         self.params['b1'] = torch.zeros(hidden_dim[0], dtype=dtype, device=device)
 
         L = self.num_layers
+
         for i in range(2, L):
             self.params[f'W{i}'] = torch.normal(mean=0, std=weight_scale, size=(hidden_dim[i - 2], hidden_dim[i - 1]),
                                                 dtype=dtype, device=device)
             self.params[f'b{i}'] = torch.zeros(hidden_dim[i - 1], dtype=dtype, device=device)
-        # 最后的W应为最后一个隐藏层神经元数量到输出层, 输出层是num_classes，L是总层数，L-1是hidden_dim的长度, L-2是最后一个元素的索引
+
         self.params[f'W{L}'] = torch.normal(mean=0, std=weight_scale, size=(hidden_dim[L - 2], num_classes),
                                             dtype=dtype, device=device)
         self.params[f'b{L}'] = torch.zeros(num_classes, dtype=dtype, device=device)
 
-        self.dropout_params = {}
         if self.use_dropout:
             self.dropout_params = {
                 'mode': 'train',
@@ -172,8 +173,8 @@ class FullyConnectedNet(object):
     def save(self, path):
         checkpoint = {
             'params': self.params,
-            'num_layers': self.num_layers,
             'reg': self.reg,
+            'num_layers': self.num_layers,
             'use_dropout': self.use_dropout,
             'dtype': self.dtype,
             'dropout_params': self.dropout_params
@@ -184,53 +185,64 @@ class FullyConnectedNet(object):
     def load(self, path, dtype, device):
         checkpoint = torch.load(path, map_location='cpu')
         self.params = checkpoint['params']
-        self.num_layers = checkpoint['num_layers']
         self.reg = checkpoint['reg']
+        self.num_layers = checkpoint['num_layers']
         self.use_dropout = checkpoint['use_dropout']
         self.dtype = dtype
         self.dropout_params = checkpoint['dropout_params']
+
         for p in self.params:
             self.params[p] = self.params[p].type(dtype).to(device)
-        print("checkpoint saved in {}".format(path))
+
+        print("load checkpoint in {}".format(path))
 
     def loss(self, X, y=None):
+
         X = X.to(self.dtype)
         if y is None:
             mode = 'test'
         else:
             mode = 'train'
+
         if self.use_dropout:
             self.dropout_params['mode'] = mode
 
-        scores = None
-        # forward
-        L = self.num_layers
-        cache = []
-        h, cache_one = Linear_ReLU.forward(X, self.params['W1'], self.params['b1'])
+        scores, cache, cache_dropout = None, [], []
+        #first
+        scores, cache_one = Linear_ReLU.forward(X, self.params['W1'], self.params['b1'])
         cache.append(cache_one)
+        if self.use_dropout:
+            scores, cache_one = Dropout.forward(scores, self.dropout_params)
+            cache_dropout.append(cache_one)
 
+        #loop
+        L = self.num_layers
         for i in range(2, L):
-            h, cache_i = Linear_ReLU.forward(h, self.params[f'W{i}'], self.params[f'b{i}'])
+            scores, cache_i = Linear_ReLU.forward(scores, self.params[f'W{i}'], self.params[f'b{i}'])
             cache.append(cache_i)
-        # 这里是要乘最后一层，L代表网络的总层数
-        scores, cache_fin = Linear.forward(h, self.params[f'W{L}'], self.params[f'b{L}'])
+            if self.use_dropout:
+                scores, cache_i = Dropout.forward(scores, self.dropout_params)
+                cache_dropout.append(cache_i)
+
+        scores, cache_fin = Linear.forward(scores, self.params[f'W{L}'], self.params[f'b{L}'])
         cache.append(cache_fin)
 
         if mode == 'test':
             return scores
 
-        # loss
         loss, grads = 0.0, {}
-        loss, dscores = softmax_loss(scores, y)
+
+        loss, dout = softmax_loss(scores, y)
+        # loss regular
         for i in range(L):
             loss += self.reg * torch.sum(self.params[f'W{i + 1}'] ** 2)
 
-        # grads (backward)
-        dh, grads[f'W{L}'], grads[f'b{L}'] = Linear.backward(dscores, cache[-1])
+        dh, grads[f'W{L}'], grads[f'b{L}'] = Linear.backward(dout, cache[-1])
         grads[f'W{L}'] += 2 * self.reg * self.params[f'W{L}']
 
         for i in range(L - 1, 0, -1):
-            # cache是列表，存储了每一层前向传播的中间结果, 第一层的中间结果存储在 cache[0], 第二层的中间结果存储在 cache[1]
+            if self.dropout_params:
+                dh = Dropout.backward(dh, cache_dropout[i - 1])
             dh, grads[f'W{i}'], grads[f'b{i}'] = Linear_ReLU.backward(dh, cache[i - 1])
             grads[f'W{i}'] += 2 * self.reg * self.params[f'W{i}']
 
@@ -259,40 +271,42 @@ def get_five_layer_network_params():
     weight_scale = 1e-1
     return weight_scale, learning_rate
 
-
-def sgd(w, dw, config = None):
+def sgd(w, dw, config=None):
     if config is None:
         config = {}
     config.setdefault('learning_rate', 1e-2)
-    w = w - dw * config['learning_rate']
+    w = w - config['learning_rate'] * dw
 
     return w, config
 
 
-def sgd_momentum(w, dw, config = None):
+def sgd_momentum(w, dw, config=None):
     if config is None:
         config = {}
     config.setdefault('learning_rate', 1e-2)
-    config.setdefault('mu', 0.9)
+    config.setdefault('v', 0.9)
     config.setdefault('velocity', torch.zeros_like(w))
-    v = config['mu'] * config['velocity'] - config['learning_rate'] * dw
-    next_w = w + v
 
+    v = config['v'] * config['velocity'] - config['learning_rate'] * dw
+    next_w = w + v
     config['velocity'] = v
+
     return next_w, config
+
 
 def rmsprop(w, dw, config = None):
     if config is None:
         config = {}
     config.setdefault('learning_rate', 1e-2)
-    config.setdefault('decay_rate', 0.99)
+    config.setdefault('r', 0.99)
     config.setdefault('cache', torch.zeros_like(w))
     config.setdefault('epsilon', 1e-8)
 
-    cache = config['decay_rate'] * config['cache'] + (1 - config['decay_rate']) * (dw ** 2)
-    next_w = w - config['learning_rate'] * dw / torch.sqrt(cache) + config['epsilon']
+    cache = config['r'] * config['cache'] + (1 - config['r']) * (dw**2)
+    next_w = w - (dw * config['learning_rate']) / (cache.sqrt() + config['epsilon'])
 
     config['cache'] = cache
+
     return next_w, config
 
 def adam(w, dw, config = None):
@@ -303,8 +317,8 @@ def adam(w, dw, config = None):
     config.setdefault('beta2', 0.999)
     config.setdefault('m', torch.zeros_like(w))
     config.setdefault('v', torch.zeros_like(w))
-    config.setdefault('epsilon', 1e-8)
     config.setdefault('t', 0)
+    config.setdefault('epsilon', 1e-8)
 
     config['t'] += 1
 
@@ -314,9 +328,10 @@ def adam(w, dw, config = None):
     v = config['beta2'] * config['v'] + (1 - config['beta2']) * (dw ** 2)
     v_hat = v / (1 - config['beta2'] ** config['t'])
 
-    next_w = w - config['learning_rate'] * m_hat / (torch.sqrt(v_hat) + config['epsilon'])
+    next_w = w - (m_hat * config['learning_rate']) / (torch.sqrt(v_hat) + config['epsilon'])
 
     config['m'], config['v'] = m, v
+
     return next_w, config
 
 class Dropout(object):
@@ -329,15 +344,12 @@ class Dropout(object):
         mask = None
         out = None
 
-        # 如果模式为测试，则直接正向传递，不需要关闭神经元
-        if mode == 'test':
-            out = x
-        # 模式为训练需要随机关闭神经元, torch.rand在(0, 1)随机生成x.shape的随机数, 取 >p的为true, 再除以1-p扩大他们保持期望
-        # 如果p = 0.3 则保持原来的70%不分
-        elif mode == 'train':
-            mask = (torch.rand(x.shape) > p) / (1-p)
+        if mode == 'train':
+            mask = (torch.rand(x.shape) > p) / (1 - p)
             mask = mask.cuda()
             out = x * mask
+        if mode == 'test':
+            out = x
 
         cache = (dropout_param, mask)
         return out, cache
@@ -349,10 +361,10 @@ class Dropout(object):
 
         dx = None
 
-        if mode == 'test':
+        if mode == 'train':
+            dx = dout * mask
+        elif mode == 'test':
             dx = dout
-        # 梯度反向传播时，掩码会继续应用, 以确保梯度只通过未被丢弃的神经元
-        elif mode == 'train':
-            dx = mask * dout
 
         return dx
+
