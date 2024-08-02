@@ -6,20 +6,19 @@ from eecs598 import Solver
 class Linear(object):
     @staticmethod
     def forward(x, w, b):
-        out = None
-        cache = (x, w, b)
         num_input = x.shape[0]
-
         x_flat = x.reshape(num_input, -1)
+
         out = torch.mm(x_flat, w) + b
+        cache = (x, w, b)
 
         return out, cache
 
     @staticmethod
     def backward(dout, cache):
+        dx, dw, db = None, None, None
         x, w, b = cache
         num_input = x.shape[0]
-        dx, dw, db = None, None, None
         x_flat = x.reshape(num_input, -1)
 
         dx = torch.mm(dout, w.t()).reshape(x.shape)
@@ -50,8 +49,8 @@ class Linear_ReLU(object):
     def forward(x, w, b):
         out_linear, cache_linear = Linear.forward(x, w, b)
         out_relu, cache_relu = ReLU.forward(out_linear)
-        cache = (cache_linear, cache_relu)
 
+        cache = (cache_linear, cache_relu)
         return out_relu, cache
 
     @staticmethod
@@ -63,6 +62,41 @@ class Linear_ReLU(object):
         return dx, dw, db
 
 
+class Dropout(object):
+    @staticmethod
+    def forward(x, dropout_params):
+        mode, p = dropout_params['mode'], dropout_params['p']
+
+        if 'seed' in dropout_params:
+            torch.manual_seed(dropout_params['seed'])
+
+        out = None
+        mask = (torch.rand(x.shape) > p) / (1 - p)
+        mask = mask.cuda()
+
+        if mode == 'train':
+            out = x * mask
+        elif mode == 'test':
+            out = x
+
+        cache = (mask, dropout_params)
+
+        return out, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        mask, drop_params = cache
+        mode = drop_params['mode']
+        dx = None
+
+        if mode == 'train':
+            dx = dout * mask
+        elif mode == 'test':
+            dx = dout
+
+        return dx
+
+
 class TwoLayerNet(object):
     def __init__(
             self,
@@ -70,7 +104,7 @@ class TwoLayerNet(object):
             hidden_dim=100,
             num_classes=10,
             reg=0.0,
-            weight_scale=1e-3,
+            weight_scale=1e-2,
             dtype=torch.float32,
             device='cpu'
     ):
@@ -94,12 +128,13 @@ class TwoLayerNet(object):
 
     def load(self, path, dtype, device):
         checkpoint = torch.load(path, map_location='cpu')
-        self.params['params'] = checkpoint['params']
+        self.params = checkpoint['params']
         self.reg = checkpoint['reg']
+
         for p in self.params:
             self.params[p] = self.params[p].type(dtype).to(device)
 
-        print("checkpoint saved in {}".format(path))
+        print("load checkpoint in {}".format(path))
 
     def loss(self, X, y=None):
         W1, b1 = self.params['W1'], self.params['b1']
@@ -110,19 +145,16 @@ class TwoLayerNet(object):
 
         if y is None:
             return scores
-
         loss, grads = 0.0, {}
 
-        loss, dout = softmax_loss(scores, y)
+        loss, dscores = softmax_loss(scores, y)
         loss += self.reg * (torch.sum(W1 * W1) + torch.sum(W2 * W2))
 
-        dhidden, dW2, db2 = Linear.backward(dout, cache_2)
-        dx, dW1, db1 = Linear_ReLU.backward(dhidden, cache_1)
+        dh, grads['W2'], grads['b2'] = Linear.backward(dscores, cache_2)
+        grads['W2'] += 2 * self.reg * self.params['W2']
 
-        grads['W1'] = dW1 + 2 * self.reg * self.params['W1']
-        grads['b1'] = db1
-        grads['W2'] = dW2 + 2 * self.reg * self.params['W2']
-        grads['b2'] = db2
+        dx, grads['W1'], grads['b1'] = Linear_ReLU.backward(dh, cache_1)
+        grads['W1'] += 2 * self.reg * self.params['W1']
 
         return loss, grads
 
@@ -130,7 +162,7 @@ class TwoLayerNet(object):
 class FullyConnectedNet(object):
     def __init__(
             self,
-            hidden_dim,
+            hidden_dims,
             input_dim=3 * 32 * 32,
             num_classes=10,
             reg=0.0,
@@ -141,24 +173,24 @@ class FullyConnectedNet(object):
             device='cpu'
     ):
         self.params = {}
-        self.num_layers = len(hidden_dim) + 1
+        self.num_layers = len(hidden_dims) + 1
         self.reg = reg
         self.use_dropout = dropout != 0.0
         self.dtype = dtype
         self.dropout_params = {}
 
-        self.params['W1'] = torch.normal(mean=0, std=weight_scale, size=(input_dim, hidden_dim[0]), dtype=dtype,
-                                         device=device)
-        self.params['b1'] = torch.zeros(hidden_dim[0], dtype=dtype, device=device)
-
         L = self.num_layers
+        self.params['W1'] = torch.normal(mean=0.0, std=weight_scale, size=(input_dim, hidden_dims[0]), dtype=dtype,
+                                         device=device)
+        self.params['b1'] = torch.zeros(hidden_dims[0], dtype=dtype, device=device)
 
         for i in range(2, L):
-            self.params[f'W{i}'] = torch.normal(mean=0, std=weight_scale, size=(hidden_dim[i - 2], hidden_dim[i - 1]),
-                                                dtype=dtype, device=device)
-            self.params[f'b{i}'] = torch.zeros(hidden_dim[i - 1], dtype=dtype, device=device)
+            self.params[f'W{i}'] = torch.normal(mean=0.0, std=weight_scale,
+                                                size=(hidden_dims[i - 2], hidden_dims[i - 1]), dtype=dtype,
+                                                device=device)
+            self.params[f'b{i}'] = torch.zeros(hidden_dims[i - 1], dtype=dtype, device=device)
 
-        self.params[f'W{L}'] = torch.normal(mean=0, std=weight_scale, size=(hidden_dim[L - 2], num_classes),
+        self.params[f'W{L}'] = torch.normal(mean=0.0, std=weight_scale, size=(hidden_dims[-1], num_classes),
                                             dtype=dtype, device=device)
         self.params[f'b{L}'] = torch.zeros(num_classes, dtype=dtype, device=device)
 
@@ -197,8 +229,8 @@ class FullyConnectedNet(object):
         print("load checkpoint in {}".format(path))
 
     def loss(self, X, y=None):
-
         X = X.to(self.dtype)
+
         if y is None:
             mode = 'test'
         else:
@@ -207,16 +239,15 @@ class FullyConnectedNet(object):
         if self.use_dropout:
             self.dropout_params['mode'] = mode
 
-        scores, cache, cache_dropout = None, [], []
-        #first
-        scores, cache_one = Linear_ReLU.forward(X, self.params['W1'], self.params['b1'])
-        cache.append(cache_one)
-        if self.use_dropout:
-            scores, cache_one = Dropout.forward(scores, self.dropout_params)
-            cache_dropout.append(cache_one)
-
-        #loop
         L = self.num_layers
+        scores, cache, cache_dropout = None, [], []
+
+        scores, cache_1 = Linear_ReLU.forward(X, self.params['W1'], self.params['b1'])
+        cache.append(cache_1)
+        if self.use_dropout:
+            scores, cache_1 = Dropout.forward(X, self.dropout_params)
+            cache_dropout.append(cache_1)
+
         for i in range(2, L):
             scores, cache_i = Linear_ReLU.forward(scores, self.params[f'W{i}'], self.params[f'b{i}'])
             cache.append(cache_i)
@@ -232,16 +263,15 @@ class FullyConnectedNet(object):
 
         loss, grads = 0.0, {}
 
-        loss, dout = softmax_loss(scores, y)
-        # loss regular
+        loss, dscores = softmax_loss(scores, y)
         for i in range(L):
             loss += self.reg * torch.sum(self.params[f'W{i + 1}'] ** 2)
 
-        dh, grads[f'W{L}'], grads[f'b{L}'] = Linear.backward(dout, cache[-1])
+        dh, grads[f'W{L}'], grads[f'b{L}'] = Linear.backward(dscores, cache_fin)
         grads[f'W{L}'] += 2 * self.reg * self.params[f'W{L}']
 
         for i in range(L - 1, 0, -1):
-            if self.dropout_params:
+            if self.use_dropout:
                 dh = Dropout.backward(dh, cache_dropout[i - 1])
             dh, grads[f'W{i}'], grads[f'b{i}'] = Linear_ReLU.backward(dh, cache[i - 1])
             grads[f'W{i}'] += 2 * self.reg * self.params[f'W{i}']
@@ -271,13 +301,14 @@ def get_five_layer_network_params():
     weight_scale = 1e-1
     return weight_scale, learning_rate
 
+
 def sgd(w, dw, config=None):
     if config is None:
         config = {}
     config.setdefault('learning_rate', 1e-2)
     w = w - config['learning_rate'] * dw
 
-    return w, config
+    return w
 
 
 def sgd_momentum(w, dw, config=None):
@@ -287,14 +318,15 @@ def sgd_momentum(w, dw, config=None):
     config.setdefault('v', 0.9)
     config.setdefault('velocity', torch.zeros_like(w))
 
-    v = config['v'] * config['velocity'] - config['learning_rate'] * dw
+    v = config['velocity'] * config['v'] - config['learning_rate'] * dw
     next_w = w + v
+
     config['velocity'] = v
 
     return next_w, config
 
 
-def rmsprop(w, dw, config = None):
+def rmsprop(w, dw, config=None):
     if config is None:
         config = {}
     config.setdefault('learning_rate', 1e-2)
@@ -302,69 +334,33 @@ def rmsprop(w, dw, config = None):
     config.setdefault('cache', torch.zeros_like(w))
     config.setdefault('epsilon', 1e-8)
 
-    cache = config['r'] * config['cache'] + (1 - config['r']) * (dw**2)
-    next_w = w - (dw * config['learning_rate']) / (cache.sqrt() + config['epsilon'])
+    r = config['r'] * config['cache'] + (1 - config['r']) * (dw ** 2)
+    next_w = w - (config['learning_rate'] * dw) / (torch.sqrt(r) + config['epsilon'])
 
-    config['cache'] = cache
-
+    config['cache'] = r
     return next_w, config
+
 
 def adam(w, dw, config = None):
     if config is None:
         config = {}
     config.setdefault('learning_rate', 1e-3)
-    config.setdefault('beta1', 0.9)
-    config.setdefault('beta2', 0.999)
+    config.setdefault('beta_1', 0.9)
+    config.setdefault('beta_2', 0.999)
     config.setdefault('m', torch.zeros_like(w))
     config.setdefault('v', torch.zeros_like(w))
-    config.setdefault('t', 0)
     config.setdefault('epsilon', 1e-8)
+    config.setdefault('t', 0)
 
     config['t'] += 1
 
-    m = config['beta1'] * config['m'] + (1 - config['beta1']) * dw
-    m_hat = m / (1 - config['beta1'] ** config['t'])
+    m = config['beta_1'] * config['m'] + (1 - config['beta_1']) * dw
+    m_hat = m / (1 - config['beta_1'] ** config['t'])
 
-    v = config['beta2'] * config['v'] + (1 - config['beta2']) * (dw ** 2)
-    v_hat = v / (1 - config['beta2'] ** config['t'])
+    v = config['beta_2'] * config['v'] + (1 - config['beta_2']) * (dw ** 2)
+    v_hat = v / (1 - config['beta_2'] ** config['t'])
 
-    next_w = w - (m_hat * config['learning_rate']) / (torch.sqrt(v_hat) + config['epsilon'])
+    next_w = w - (config['learning_rate'] * m_hat) / (torch.sqrt(v_hat) + config['epsilon'])
 
     config['m'], config['v'] = m, v
-
     return next_w, config
-
-class Dropout(object):
-    @staticmethod
-    def forward(x, dropout_param):
-        mode, p = dropout_param['mode'], dropout_param['p']
-        if 'seed' in dropout_param:
-            torch.manual_seed(dropout_param['seed'])
-
-        mask = None
-        out = None
-
-        if mode == 'train':
-            mask = (torch.rand(x.shape) > p) / (1 - p)
-            mask = mask.cuda()
-            out = x * mask
-        if mode == 'test':
-            out = x
-
-        cache = (dropout_param, mask)
-        return out, cache
-
-    @staticmethod
-    def backward(dout, cache):
-        dropout_param, mask = cache
-        mode = dropout_param['mode']
-
-        dx = None
-
-        if mode == 'train':
-            dx = dout * mask
-        elif mode == 'test':
-            dx = dout
-
-        return dx
-
