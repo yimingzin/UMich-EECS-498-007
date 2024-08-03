@@ -364,3 +364,23 @@ def adam(w, dw, config = None):
 
     config['m'], config['v'] = m, v
     return next_w, config
+
+
+# extra : nesterov_momentum
+def nesterov_momentum(w, dw, config = None):
+    if config is None:
+        config = {}
+    config.setdefault('learning_rate', 1e-2)
+    config.setdefault('momentum', 0.9)
+    config.setdefault('velocity', torch.zeros_like(w))
+
+    #提前更新速度
+    prev_v = config['velocity']
+    v = config['momentum'] * prev_v - config['learning_rate'] * dw
+
+    # 使用 Nesterov 动量更新权重
+    next_w = w + config['momentum'] * v - config['learning_rate'] * dw
+
+    config['velocity'] = v
+
+    return next_w, config
