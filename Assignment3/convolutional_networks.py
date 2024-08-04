@@ -118,7 +118,45 @@ class MaxPool(object):
                         h_start, h_end = h_prime * stride, h_prime * stride + pool_height
                         w_start, w_end = w_prime * stride, w_prime * stride + pool_width
                         receptive_field = x[n, c, h_start:h_end, w_start:w_end]
-
+                        # 创建掩码确定池化区域最大值的位置
                         mask = (receptive_field == torch.max(receptive_field))
+                        # 把上游梯度累加到确定的最大值位置
                         dx[n, c, h_start:h_end, w_start:w_end][mask] += dout[n, c, h_prime, w_prime]
         return dx
+
+
+class FastConv(object):
+    @staticmethod
+    def forward(x, w, b, conv_param):
+        N, C, H, W = x.shape
+        F, C, HH, WW = w.shape
+        stride, pad = conv_param['stride'], conv_param['pad']
+
+        """
+            torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros')
+            in_channels：输入通道数。(R, G, B三通道)
+            out_channels：输出通道数（卷积核的数量）。
+            kernel_size：卷积核的大小，可以是单个整数（方形卷积核）或一个元组（非方形卷积核）。
+            stride：卷积的步幅，默认是 1。
+            padding：输入的零填充，默认是 0。
+            dilation：卷积核元素之间的间距，默认是 1。
+            groups：分组卷积的数量，默认是 1。
+            bias：如果设置为 True，将添加一个学习的偏置，默认是 True。
+            padding_mode：填充模式，默认是 'zeros'，可以是 'zeros', 'reflect', 'replicate', or 'circular'。
+            
+            return: 所有卷积核生成输出通道的集合
+        """
+        layer = torch.nn.Conv2d(C, F, (HH, WW), stride=stride, padding=pad)
+
+        # 将参数w和b从普通张量转为模型layer的参数( 把预定义的权重w和偏置b设置为卷积层的参数 )
+        layer.weight = torch.nn.Parameter(w)
+        layer.bias = torch.nn.Parameter(b)
+        # 把x从计算图中分离出来：1. 避免x通过复杂操作得到 之后计算图的复杂性, 2. 控制梯度传播只到x
+        tx = x.detach()
+        out = layer(tx)
+
+        cache = (x, w, b, conv_param, tx, out, layer)
+        return out, cache
+
+
+
