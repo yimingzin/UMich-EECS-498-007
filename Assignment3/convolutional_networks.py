@@ -134,26 +134,10 @@ class FastConv(object):
         F, C, HH, WW = w.shape
         stride, pad = conv_param['stride'], conv_param['pad']
 
-        """
-            torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros')
-            in_channels：输入通道数。(R, G, B三通道)
-            out_channels：输出通道数（卷积核的数量）。
-            kernel_size：卷积核的大小，可以是单个整数（方形卷积核）或一个元组（非方形卷积核）。
-            stride：卷积的步幅，默认是 1。
-            padding：输入的零填充，默认是 0。
-            dilation：卷积核元素之间的间距，默认是 1。
-            groups：分组卷积的数量，默认是 1。
-            bias：如果设置为 True，将添加一个学习的偏置，默认是 True。
-            padding_mode：填充模式，默认是 'zeros'，可以是 'zeros', 'reflect', 'replicate', or 'circular'。
-
-            return: 所有卷积核生成输出通道的集合
-        """
         layer = torch.nn.Conv2d(C, F, (HH, WW), stride=stride, padding=pad)
-
-        # 将参数w和b从普通张量转为模型layer的参数( 把预定义的权重w和偏置b设置为卷积层的参数 )
         layer.weight = torch.nn.Parameter(w)
         layer.bias = torch.nn.Parameter(b)
-        # 把x从计算图中分离出来：1. 避免x通过复杂操作得到 之后计算图的复杂性, 2. 控制梯度传播只到x
+
         tx = x.detach()
         tx.requires_grad = True
         out = layer(tx)
@@ -163,18 +147,18 @@ class FastConv(object):
 
     @staticmethod
     def backward(dout, cache):
+        x, _, _, _, tx, out, layer = cache
         try:
-            x, _, _, _, tx, out, layer = cache
             out.backward(dout)
-
             dx = tx.grad.detach()
             dw = layer.weight.grad.detach()
             db = layer.bias.grad.detach()
             layer.weight.grad = layer.bias.grad = None
         except RuntimeError:
-            dx, dw, db = torch.zeros_like(tx), \
-                         torch.zeros_like(layer.weight), \
-                         torch.zeros_like(layer.bias)
+            dx = torch.zeros_like(tx)
+            dw = torch.zeros_like(layer.weight)
+            db = torch.zeros_like(layer.bias)
+
         return dx, dw, db
 
 
@@ -186,10 +170,11 @@ class FastMaxPool(object):
         stride = pool_param['stride']
 
         layer = torch.nn.MaxPool2d((pool_height, pool_width), stride=stride)
+
         tx = x.detach()
         tx.requires_grad = True
-        out = layer(tx)
 
+        out = layer(tx)
         cache = (x, pool_param, tx, out, layer)
 
         return out, cache
@@ -204,3 +189,139 @@ class FastMaxPool(object):
             dx = torch.zeros_like(tx)
 
         return dx
+
+
+class Conv_ReLU(object):
+    @staticmethod
+    def forward(x, w, b, conv_param):
+        out_conv, cache_conv = FastConv.forward(x, w, b, conv_param)
+        out_relu, cache_relu = ReLU.forward(out_conv)
+
+        cache = (cache_conv, cache_relu)
+
+        return out_relu, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        cache_conv, cache_relu = cache
+        da = ReLU.backward(dout, cache_relu)
+        dx, dw, db = FastConv.backward(da, cache_conv)
+
+        return dx, dw, db
+
+
+class Conv_ReLU_Pool(object):
+    @staticmethod
+    def forward(x, w, b, conv_param, pool_param):
+        out_conv, cache_conv = FastConv.forward(x, w, b, conv_param)
+        out_relu, cache_relu = ReLU.forward(out_conv)
+        out_pool, cache_pool = FastMaxPool.forward(out_relu, pool_param)
+
+        cache = (cache_conv, cache_relu, cache_pool)
+        return out_pool, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        cache_conv, cache_relu, cache_pool = cache
+        ds = FastMaxPool.backward(dout, cache_pool)
+        da = ReLU.backward(ds, cache_relu)
+        dx, dw, db = FastConv.backward(da, cache_conv)
+
+        return dx, dw, db
+
+
+# 2x2最大池化层
+class ThreeLayerConvNet(object):
+    def __init__(
+        self,
+        input_dims = (3, 32, 32),
+        num_filters = 32,
+        filter_size = 7,
+        hidden_dim = 100,
+        num_classes = 10,
+        weight_scale = 1e-3,
+        reg = 0.0,
+        dtype = torch.float,
+        device = 'cpu'
+    ):
+        self.params = {}
+        self.reg = reg
+        self.dtype = dtype
+        C, H, W = input_dims
+
+        # 卷积层权重 - 尺寸是 (N, C, H, W)
+        self.params['W1'] = torch.normal(mean=0.0, std=weight_scale, size=(num_filters, C, filter_size, filter_size), dtype=dtype, device=device)
+        self.params['b1'] = torch.zeros(num_filters, dtype=dtype, device=device)
+
+        # 展平和全连接层 - 经过2x2最大池化后的图像尺寸变为原来的一半，同时将其展平
+        self.params['W2'] = torch.normal(mean=0.0, std=weight_scale, size=(num_filters * (H // 2) * (W // 2), hidden_dim), dtype=dtype, device=device)
+        self.params['b2'] = torch.zeros(hidden_dim, dtype=dtype, device=device)
+        # 输出层
+        self.params['W3'] = torch.normal(mean=0.0, std=weight_scale, size=(hidden_dim, num_classes), dtype=dtype, device=device)
+        self.params['b3'] = torch.zeros(num_classes, dtype=dtype, device=device)
+
+    def save(self, path):
+        checkpoint = {
+            'param': self.params,
+            'reg': self.reg,
+            'dtype': self.dtype
+        }
+        torch.save(checkpoint, path)
+        print("checkpoint saved in {}".format(path))
+
+    def load(self, path):
+        checkpoint = torch.load(path, map_location='cpu')
+        self.params = checkpoint['param']
+        self.reg = checkpoint['reg']
+        self.dtype = checkpoint['dtype']
+
+        print("load checkpoint in {}".format(path))
+
+    def loss(self, X, y = None):
+        W1, b1 = self.params['W1'], self.params['b1']
+        W2, b2 = self.params['W2'], self.params['b2']
+        W3, b3 = self.params['W3'], self.params['b3']
+
+        filter_size = W1.shape[2]
+        """
+            pad公式: Output_size = 1 + (Input_size - filter_size + 2 * padding) // stride
+            这里希望在卷积后输出特征图与输入图像的尺寸相同 则: Output_size = Input_size
+            又 stride = 1
+        """
+        conv_param = {
+            'stride': 1,
+            'pad': (filter_size - 1) // 2
+        }
+        pool_param = {
+            'stride': 2,
+            'pool_height': 2,
+            'pool_width': 2
+        }
+
+        scores = None
+
+        out_1, cache_1 = Conv_ReLU_Pool.forward(X, W1, b1, conv_param, pool_param)
+        out_2, cache_2 = Linear_ReLU.forward(out_1, W2, b2)
+        scores, cache_3 = Linear.forward(out_2, W3, b3)
+
+        if y is None:
+            return scores
+
+        loss, grads = 0.0, {}
+
+        loss, dscores = softmax_loss(scores, y)
+        loss += self.reg * (torch.sum(W1 * W1) + torch.sum(W2 * W2) + torch.sum(W3 * W3))
+
+        dh3, grads['W3'], grads['b3'] = Linear.backward(dscores, cache_3)
+        dh2, grads['W2'], grads['b2'] = Linear_ReLU.backward(dh3, cache_2)
+        dh1, grads['W1'], grads['b1'] = Conv_ReLU_Pool.backward(dh2, cache_1)
+
+        grads['W3'] += 2 * self.reg * self.params['W3']
+        grads['W2'] += 2 * self.reg * self.params['W2']
+        grads['W1'] += 2 * self.reg * self.params['W1']
+
+        return loss, grads
+
+
+
+

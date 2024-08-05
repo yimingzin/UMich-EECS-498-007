@@ -269,3 +269,83 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 # print('dx difference: ', eecs598.grad.rel_error(dx_naive, dx_fast))
 # print('dx difference CUDA: ', eecs598.grad.rel_error(dx_naive, dx_fast_cuda.to(dx_naive.device)))
 # ----------------------------------------------------------------------------------------------
+# from convolutional_networks import Conv_ReLU, Conv_ReLU_Pool
+# reset_seed(0)
+#
+# # Test Conv ReLU
+# x = torch.randn(2, 3, 8, 8, dtype=torch.float64, device='cuda')
+# w = torch.randn(3, 3, 3, 3, dtype=torch.float64, device='cuda')
+# b = torch.randn(3, dtype=torch.float64, device='cuda')
+# dout = torch.randn(2, 3, 8, 8, dtype=torch.float64, device='cuda')
+# conv_param = {'stride': 1, 'pad': 1}
+#
+# out, cache = Conv_ReLU.forward(x, w, b, conv_param)
+# dx, dw, db = Conv_ReLU.backward(dout, cache)
+#
+# dx_num = eecs598.grad.compute_numeric_gradient(lambda x: Conv_ReLU.forward(x, w, b, conv_param)[0], x, dout)
+# dw_num = eecs598.grad.compute_numeric_gradient(lambda w: Conv_ReLU.forward(x, w, b, conv_param)[0], w, dout)
+# db_num = eecs598.grad.compute_numeric_gradient(lambda b: Conv_ReLU.forward(x, w, b, conv_param)[0], b, dout)
+#
+# # Relative errors should be around e-8 or less
+# print('Testing Conv_ReLU:')
+# print('dx error: ', eecs598.grad.rel_error(dx_num, dx))
+# print('dw error: ', eecs598.grad.rel_error(dw_num, dw))
+# print('db error: ', eecs598.grad.rel_error(db_num, db))
+#
+# # Test Conv ReLU Pool
+# x = torch.randn(2, 3, 16, 16, dtype=torch.float64, device='cuda')
+# w = torch.randn(3, 3, 3, 3, dtype=torch.float64, device='cuda')
+# b = torch.randn(3, dtype=torch.float64, device='cuda')
+# dout = torch.randn(2, 3, 8, 8, dtype=torch.float64, device='cuda')
+# conv_param = {'stride': 1, 'pad': 1}
+# pool_param = {'pool_height': 2, 'pool_width': 2, 'stride': 2}
+#
+# out, cache = Conv_ReLU_Pool.forward(x, w, b, conv_param, pool_param)
+# dx, dw, db = Conv_ReLU_Pool.backward(dout, cache)
+#
+# dx_num = eecs598.grad.compute_numeric_gradient(lambda x: Conv_ReLU_Pool.forward(x, w, b, conv_param, pool_param)[0], x, dout)
+# dw_num = eecs598.grad.compute_numeric_gradient(lambda w: Conv_ReLU_Pool.forward(x, w, b, conv_param, pool_param)[0], w, dout)
+# db_num = eecs598.grad.compute_numeric_gradient(lambda b: Conv_ReLU_Pool.forward(x, w, b, conv_param, pool_param)[0], b, dout)
+#
+# # Relative errors should be around e-8 or less
+# print()
+# print('Testing Conv_ReLU_Pool')
+# print('dx error: ', eecs598.grad.rel_error(dx_num, dx))
+# print('dw error: ', eecs598.grad.rel_error(dw_num, dw))
+# print('db error: ', eecs598.grad.rel_error(db_num, db))
+# ----------------------------------------------------------------------------------------------
+from convolutional_networks import ThreeLayerConvNet
+
+reset_seed(0)
+model = ThreeLayerConvNet(dtype=torch.float64, device='cuda')
+
+N = 50
+X = torch.randn(N, 3, 32, 32, dtype=torch.float64, device='cuda')
+y = torch.randint(10, size=(N,), dtype=torch.int64, device='cuda')
+
+loss, grads = model.loss(X, y)
+print('Initial loss (no regularization): ', loss.item())
+
+model.reg = 0.5
+loss, grads = model.loss(X, y)
+print('Initial loss (with regularization): ', loss.item())
+
+from convolutional_networks import ThreeLayerConvNet
+
+num_inputs = 2
+input_dims = (3, 16, 16)
+reg = 0.0
+num_classes = 10
+reset_seed(0)
+X = torch.randn(num_inputs, *input_dims, dtype=torch.float64, device='cuda')
+y = torch.randint(num_classes, size=(num_inputs,), dtype=torch.int64, device='cuda')
+
+model = ThreeLayerConvNet(num_filters=3, filter_size=3,
+                          input_dims=input_dims, hidden_dim=7,
+                          weight_scale=5e-2, dtype=torch.float64, device='cuda')
+loss, grads = model.loss(X, y)
+
+for param_name in sorted(grads):
+    f = lambda _: model.loss(X, y)[0]
+    param_grad_num = eecs598.grad.compute_numeric_gradient(f, model.params[param_name])
+    print('%s max relative error: %e' % (param_name, eecs598.grad.rel_error(param_grad_num, grads[param_name])))
