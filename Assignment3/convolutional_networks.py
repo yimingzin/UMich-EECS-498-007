@@ -1,3 +1,5 @@
+import time
+
 import torch
 from a3_helper import softmax_loss
 from fully_connected_networks import Linear, Linear_ReLU, Solver, adam, ReLU
@@ -143,7 +145,7 @@ class FastConv(object):
             groups：分组卷积的数量，默认是 1。
             bias：如果设置为 True，将添加一个学习的偏置，默认是 True。
             padding_mode：填充模式，默认是 'zeros'，可以是 'zeros', 'reflect', 'replicate', or 'circular'。
-            
+
             return: 所有卷积核生成输出通道的集合
         """
         layer = torch.nn.Conv2d(C, F, (HH, WW), stride=stride, padding=pad)
@@ -153,10 +155,52 @@ class FastConv(object):
         layer.bias = torch.nn.Parameter(b)
         # 把x从计算图中分离出来：1. 避免x通过复杂操作得到 之后计算图的复杂性, 2. 控制梯度传播只到x
         tx = x.detach()
+        tx.requires_grad = True
         out = layer(tx)
 
         cache = (x, w, b, conv_param, tx, out, layer)
         return out, cache
 
+    @staticmethod
+    def backward(dout, cache):
+        try:
+            x, _, _, _, tx, out, layer = cache
+            out.backward(dout)
+
+            dx = tx.grad.detach()
+            dw = layer.weight.grad.detach()
+            db = layer.bias.grad.detach()
+            layer.weight.grad = layer.bias.grad = None
+        except RuntimeError:
+            dx, dw, db = torch.zeros_like(tx), \
+                         torch.zeros_like(layer.weight), \
+                         torch.zeros_like(layer.bias)
+        return dx, dw, db
 
 
+class FastMaxPool(object):
+    @staticmethod
+    def forward(x, pool_param):
+        N, C, H, W = x.shape
+        pool_height, pool_width = pool_param['pool_height'], pool_param['pool_width']
+        stride = pool_param['stride']
+
+        layer = torch.nn.MaxPool2d((pool_height, pool_width), stride=stride)
+        tx = x.detach()
+        tx.requires_grad = True
+        out = layer(tx)
+
+        cache = (x, pool_param, tx, out, layer)
+
+        return out, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        x, _, tx, out, layer = cache
+        try:
+            out.backward(dout)
+            dx = tx.grad.detach()
+        except RuntimeError:
+            dx = torch.zeros_like(tx)
+
+        return dx

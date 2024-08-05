@@ -159,16 +159,113 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 # print('Testing MaxPool.forward function:')
 # print('difference: ', eecs598.grad.rel_error(out, correct_out))
 # ----------------------------------------------------------------------------------------------
-# Max-pooling: backward test
-reset_seed(0)
-x = torch.randn(3, 2, 8, 8, dtype=torch.float64, device='cuda')
-dout = torch.randn(3, 2, 4, 4, dtype=torch.float64, device='cuda')
-pool_param = {'pool_height': 2, 'pool_width': 2, 'stride': 2}
 
-dx_num = eecs598.grad.compute_numeric_gradient(lambda x: MaxPool.forward(x, pool_param)[0], x, dout)
+# # Max-pooling: backward test
+# reset_seed(0)
+# x = torch.randn(3, 2, 8, 8, dtype=torch.float64, device='cuda')
+# dout = torch.randn(3, 2, 4, 4, dtype=torch.float64, device='cuda')
+# pool_param = {'pool_height': 2, 'pool_width': 2, 'stride': 2}
+#
+# dx_num = eecs598.grad.compute_numeric_gradient(lambda x: MaxPool.forward(x, pool_param)[0], x, dout)
+#
+# out, cache = MaxPool.forward(x, pool_param)
+# dx = MaxPool.backward(dout, cache)
+#
+# print('Testing MaxPool.backward function:')
+# print('dx error: ', eecs598.grad.rel_error(dx, dx_num))
 
-out, cache = MaxPool.forward(x, pool_param)
-dx = MaxPool.backward(dout, cache)
-
-print('Testing MaxPool.backward function:')
-print('dx error: ', eecs598.grad.rel_error(dx, dx_num))
+# ----------------------------------------------------------------------------------------------
+# # got issue
+# # Rel errors should be around e-11 or less
+# from convolutional_networks import Conv, FastConv
+#
+# reset_seed(0)
+# x = torch.randn(10, 3, 31, 31, dtype=torch.float64, device='cuda')
+# w = torch.randn(25, 3, 3, 3, dtype=torch.float64, device='cuda')
+# b = torch.randn(25, dtype=torch.float64, device='cuda')
+# dout = torch.randn(10, 25, 16, 16, dtype=torch.float64, device='cuda')
+# x_cuda, w_cuda, b_cuda, dout_cuda = x.to('cuda'), w.to('cuda'), b.to('cuda'), dout.to('cuda')
+# conv_param = {'stride': 2, 'pad': 1}
+#
+# t0 = time.time()
+# out_naive, cache_naive = Conv.forward(x, w, b, conv_param)
+# t1 = time.time()
+# out_fast, cache_fast = FastConv.forward(x, w, b, conv_param)
+# t2 = time.time()
+# out_fast_cuda, cache_fast_cuda = FastConv.forward(x_cuda, w_cuda, b_cuda, conv_param)
+# t3 = time.time()
+#
+# print('Testing FastConv.forward:')
+# print('Naive: %fs' % (t1 - t0))
+# print('Fast: %fs' % (t2 - t1))
+# print('Fast CUDA: %fs' % (t3 - t2))
+# print('Speedup: %fx' % ((t1 - t0) / (t2 - t1)))
+# print('Speedup CUDA: %fx' % ((t1 - t0) / (t3 - t2)))
+# print('Difference: ', eecs598.grad.rel_error(out_naive, out_fast))
+# print('Difference CUDA: ', eecs598.grad.rel_error(out_naive, out_fast_cuda.to(out_naive.device)))
+#
+# t0 = time.time()
+# dx_naive, dw_naive, db_naive = Conv.backward(dout, cache_naive)
+# t1 = time.time()
+# dx_fast, dw_fast, db_fast = FastConv.backward(dout, cache_fast)
+# t2 = time.time()
+# dx_fast_cuda, dw_fast_cuda, db_fast_cuda = FastConv.backward(dout_cuda, cache_fast_cuda)
+# t3 = time.time()
+#
+# print('\nTesting FastConv.backward:')
+# print('Naive: %fs' % (t1 - t0))
+# print('Fast: %fs' % (t2 - t1))
+# print('Fast CUDA: %fs' % (t3 - t2))
+# print('Speedup: %fx' % ((t1 - t0) / (t2 - t1)))
+# print('Speedup CUDA: %fx' % ((t1 - t0) / (t3 - t2)))
+# print('dx difference: ', eecs598.grad.rel_error(dx_naive, dx_fast))
+# print('dw difference: ', eecs598.grad.rel_error(dw_naive, dw_fast))
+# print('db difference: ', eecs598.grad.rel_error(db_naive, db_fast))
+# print('dx difference CUDA: ', eecs598.grad.rel_error(dx_naive, dx_fast_cuda.to(dx_naive.device)))
+# print('dw difference CUDA: ', eecs598.grad.rel_error(dw_naive, dw_fast_cuda.to(dw_naive.device)))
+# print('db difference CUDA: ', eecs598.grad.rel_error(db_naive, db_fast_cuda.to(db_naive.device)))
+# ----------------------------------------------------------------------------------------------
+# Relative errors should be close to 0.0
+# from convolutional_networks import Conv, MaxPool, FastConv, FastMaxPool
+#
+#
+# reset_seed(0)
+# x = torch.randn(40, 3, 32, 32, dtype=torch.float64, device='cuda')
+# dout = torch.randn(40, 3, 16, 16, dtype=torch.float64, device='cuda')
+# x_cuda, dout_cuda = x.to('cuda'), dout.to('cuda')
+# pool_param = {'pool_height': 2, 'pool_width': 2, 'stride': 2}
+#
+# t0 = time.time()
+# out_naive, cache_naive = MaxPool.forward(x, pool_param)
+# t1 = time.time()
+# out_fast, cache_fast = FastMaxPool.forward(x, pool_param)
+# t2 = time.time()
+# out_fast_cuda, cache_fast_cuda = FastMaxPool.forward(x_cuda, pool_param)
+# t3 = time.time()
+#
+# print('Testing FastMaxPool.forward:')
+# print('Naive: %fs' % (t1 - t0))
+# print('Fast: %fs' % (t2 - t1))
+# print('Fast CUDA: %fs' % (t3 - t2))
+# print('Speedup: %fx' % ((t1 - t0) / (t2 - t1)))
+# print('Speedup CUDA: %fx' % ((t1 - t0) / (t3 - t2)))
+# print('Difference: ', eecs598.grad.rel_error(out_naive, out_fast))
+# print('Difference CUDA: ', eecs598.grad.rel_error(out_naive, out_fast_cuda.to(out_naive.device)))
+#
+# t0 = time.time()
+# dx_naive = MaxPool.backward(dout, cache_naive)
+# t1 = time.time()
+# dx_fast = FastMaxPool.backward(dout, cache_fast)
+# t2 = time.time()
+# dx_fast_cuda = FastMaxPool.backward(dout_cuda, cache_fast_cuda)
+# t3 = time.time()
+#
+# print('\nTesting FastMaxPool.backward:')
+# print('Naive: %fs' % (t1 - t0))
+# print('Fast: %fs' % (t2 - t1))
+# print('Fast CUDA: %fs' % (t3 - t2))
+# print('Speedup: %fx' % ((t1 - t0) / (t2 - t1)))
+# print('Speedup CUDA: %fx' % ((t1 - t0) / (t3 - t2)))
+# print('dx difference: ', eecs598.grad.rel_error(dx_naive, dx_fast))
+# print('dx difference CUDA: ', eecs598.grad.rel_error(dx_naive, dx_fast_cuda.to(dx_naive.device)))
+# ----------------------------------------------------------------------------------------------
