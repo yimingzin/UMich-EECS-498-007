@@ -204,6 +204,7 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 # print('Difference: ', eecs598.grad.rel_error(out_naive, out_fast))
 # print('Difference CUDA: ', eecs598.grad.rel_error(out_naive, out_fast_cuda.to(out_naive.device)))
 #
+#
 # t0 = time.time()
 # dx_naive, dw_naive, db_naive = Conv.backward(dout, cache_naive)
 # t1 = time.time()
@@ -314,38 +315,201 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 # print('dw error: ', eecs598.grad.rel_error(dw_num, dw))
 # print('db error: ', eecs598.grad.rel_error(db_num, db))
 # ----------------------------------------------------------------------------------------------
-from convolutional_networks import ThreeLayerConvNet
+# from convolutional_networks import ThreeLayerConvNet
+#
+# reset_seed(0)
+# model = ThreeLayerConvNet(dtype=torch.float64, device='cuda')
+#
+# N = 50
+# X = torch.randn(N, 3, 32, 32, dtype=torch.float64, device='cuda')
+# y = torch.randint(10, size=(N,), dtype=torch.int64, device='cuda')
+#
+# loss, grads = model.loss(X, y)
+# print('Initial loss (no regularization): ', loss.item())
+#
+# model.reg = 0.5
+# loss, grads = model.loss(X, y)
+# print('Initial loss (with regularization): ', loss.item())
+#
+# from convolutional_networks import ThreeLayerConvNet
+#
+# num_inputs = 2
+# input_dims = (3, 16, 16)
+# reg = 0.0
+# num_classes = 10
+# reset_seed(0)
+# X = torch.randn(num_inputs, *input_dims, dtype=torch.float64, device='cuda')
+# y = torch.randint(num_classes, size=(num_inputs,), dtype=torch.int64, device='cuda')
+#
+# model = ThreeLayerConvNet(num_filters=3, filter_size=3,
+#                           input_dims=input_dims, hidden_dim=7,
+#                           weight_scale=5e-2, dtype=torch.float64, device='cuda')
+# loss, grads = model.loss(X, y)
+#
+# for param_name in sorted(grads):
+#     f = lambda _: model.loss(X, y)[0]
+#     param_grad_num = eecs598.grad.compute_numeric_gradient(f, model.params[param_name])
+#     print('%s max relative error: %e' % (param_name, eecs598.grad.rel_error(param_grad_num, grads[param_name])))
+# ----------------------------------------------------------------------------------------------
+# # train one small data got overfit
+# from convolutional_networks import ThreeLayerConvNet
+# from fully_connected_networks import adam
+#
+# reset_seed(0)
+#
+# num_train = 100
+# small_data = {
+#   'X_train': data_dict['X_train'][:num_train],
+#   'y_train': data_dict['y_train'][:num_train],
+#   'X_val': data_dict['X_val'],
+#   'y_val': data_dict['y_val'],
+# }
+#
+# model = ThreeLayerConvNet(weight_scale=1e-3, dtype=torch.float32, device='cuda')
+#
+# solver = Solver(model, small_data,
+#                 num_epochs=30, batch_size=50,
+#                 update_rule=adam,
+#                 optim_config={
+#                   'learning_rate': 2e-3,
+#                 },
+#                 verbose=True, print_every=1,
+#                 device='cuda')
+# solver.train()
+#
+# plt.title('Training losses')
+# plt.plot(solver.loss_history, 'o')
+# plt.xlabel('iteration')
+# plt.ylabel('loss')
+# plt.gcf().set_size_inches(9, 4)
+# plt.show()
+#
+# plt.title('Train and Val accuracies')
+# plt.plot(solver.train_acc_history, '-o')
+# plt.plot(solver.val_acc_history, '-o')
+# plt.legend(['train', 'val'], loc='upper left')
+# plt.xlabel('epoch')
+# plt.ylabel('accuracy')
+# plt.gcf().set_size_inches(9, 4)
+# plt.show()
+# ----------------------------------------------------------------------------------------------
+# from convolutional_networks import ThreeLayerConvNet
+# from fully_connected_networks import adam
+#
+# reset_seed(0)
+#
+# model = ThreeLayerConvNet(weight_scale=0.001, hidden_dim=500, reg=0.001, dtype=torch.float, device='cuda')
+#
+# solver = Solver(model, data_dict,
+#                 num_epochs=1, batch_size=64,
+#                 update_rule=adam,
+#                 optim_config={
+#                   'learning_rate': 2e-3,
+#                 },
+#                 verbose=True, print_every=50, device='cuda')
+# solver.train()
+#
+# from torchvision.utils import make_grid
+# nrow = math.ceil(math.sqrt(model.params['W1'].shape[0]))
+# grid = make_grid(model.params['W1'], nrow=nrow, padding=1, normalize=True, scale_each=True)
+# plt.imshow(grid.to(device='cpu').permute(1, 2, 0))
+# plt.axis('off')
+# plt.gcf().set_size_inches(5, 5)
+# plt.show()
+# ----------------------------------------------------------------------------------------------
+# from convolutional_networks import DeepConvNet
+# from fully_connected_networks import adam
+#
+# reset_seed(0)
+# num_inputs = 2
+# input_dims = (3, 8, 8)
+# num_classes = 10
+# N = 50
+#
+# X = torch.randn(N, *input_dims, dtype=torch.float64, device='cuda')
+# y = torch.randint(10, size=(N,), dtype=torch.int64, device='cuda')
+#
+# for reg in [0, 3.14]:
+#   print('Running check with reg = ', reg)
+#   model = DeepConvNet(input_dims=input_dims, num_classes=num_classes,
+#                       num_filters=[8, 8, 8],
+#                       max_pools=[0, 2],
+#                       reg=reg,
+#                       weight_scale=5e-2, dtype=torch.float64, device='cuda')
+#
+#   loss, grads = model.loss(X, y)
+#   # The relative errors should be up to the order of e-6
+#   for name in sorted(grads):
+#     f = lambda _: model.loss(X, y)[0]
+#     grad_num = eecs598.grad.compute_numeric_gradient(f, model.params[name])
+#     print('%s max relative error: %e' % (name, eecs598.grad.rel_error(grad_num, grads[name])))
+#   if reg == 0: print()
+# ----------------------------------------------------------------------------------------------
+# TODO: Use a DeepConvNet to overfit 50 training examples by
+# tweaking just the learning rate and initialization scale.
+from convolutional_networks import DeepConvNet, find_overfit_parameters
+from fully_connected_networks import adam
 
 reset_seed(0)
-model = ThreeLayerConvNet(dtype=torch.float64, device='cuda')
+num_train = 50
+small_data = {
+  'X_train': data_dict['X_train'][:num_train],
+  'y_train': data_dict['y_train'][:num_train],
+  'X_val': data_dict['X_val'],
+  'y_val': data_dict['y_val'],
+}
+input_dims = small_data['X_train'].shape[1:]
 
-N = 50
-X = torch.randn(N, 3, 32, 32, dtype=torch.float64, device='cuda')
-y = torch.randint(10, size=(N,), dtype=torch.int64, device='cuda')
 
-loss, grads = model.loss(X, y)
-print('Initial loss (no regularization): ', loss.item())
+# Update the parameters in find_overfit_parameters in convolutional_networks.py
+weight_scale, learning_rate = find_overfit_parameters()
 
-model.reg = 0.5
-loss, grads = model.loss(X, y)
-print('Initial loss (with regularization): ', loss.item())
 
-from convolutional_networks import ThreeLayerConvNet
+model = DeepConvNet(input_dims=input_dims, num_classes=10,
+                    num_filters=[8, 16, 32, 64],
+                    max_pools=[0, 1, 2, 3],
+                    reg=1e-5, weight_scale=weight_scale, dtype=torch.float32, device='cuda')
+solver = Solver(model, small_data,
+                print_every=10, num_epochs=30, batch_size=10,
+                update_rule=adam,
+                optim_config={
+                  'learning_rate': learning_rate,
+                },
+                device='cuda',
+         )
+# Turn off keep_best_params to allow final weights to be saved, instead of best weights on validation set.
+solver.train(return_best_params=False)
 
-num_inputs = 2
-input_dims = (3, 16, 16)
-reg = 0.0
-num_classes = 10
-reset_seed(0)
-X = torch.randn(num_inputs, *input_dims, dtype=torch.float64, device='cuda')
-y = torch.randint(num_classes, size=(num_inputs,), dtype=torch.int64, device='cuda')
+plt.plot(solver.loss_history, 'o')
+plt.title('Training loss history')
+plt.xlabel('Iteration')
+plt.ylabel('Training loss')
+plt.show()
 
-model = ThreeLayerConvNet(num_filters=3, filter_size=3,
-                          input_dims=input_dims, hidden_dim=7,
-                          weight_scale=5e-2, dtype=torch.float64, device='cuda')
-loss, grads = model.loss(X, y)
+val_acc = solver.check_accuracy(
+                        solver.X_train, solver.y_train, num_samples=solver.num_train_samples
+                    )
+print(val_acc)
 
-for param_name in sorted(grads):
-    f = lambda _: model.loss(X, y)[0]
-    param_grad_num = eecs598.grad.compute_numeric_gradient(f, model.params[param_name])
-    print('%s max relative error: %e' % (param_name, eecs598.grad.rel_error(param_grad_num, grads[param_name])))
+path = os.path.join('D:/PythonProject/UMichLearn/Assignment3', 'overfit_deepconvnet.pth')
+solver.model.save(path)
+# Create a new instance
+model = DeepConvNet(input_dims=input_dims, num_classes=10,
+                    num_filters=[8, 16, 32, 64],
+                    max_pools=[0, 1, 2, 3],
+                    reg=1e-5, weight_scale=weight_scale, dtype=torch.float32, device='cuda')
+solver = Solver(model, small_data,
+                print_every=10, num_epochs=30, batch_size=10,
+                update_rule=adam,
+                optim_config={
+                  'learning_rate': learning_rate,
+                },
+                device='cuda',
+         )
+
+# Load model
+solver.model.load(path, dtype=torch.float32, device='cuda')
+
+# Evaluate on validation set
+accuracy = solver.check_accuracy(small_data['X_train'], small_data['y_train'])
+print(f"Saved model's accuracy on training is {accuracy}")

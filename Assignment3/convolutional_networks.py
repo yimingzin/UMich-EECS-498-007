@@ -323,5 +323,172 @@ class ThreeLayerConvNet(object):
         return loss, grads
 
 
+class DeepConvNet(object):
+    def __init__(
+            self,
+            input_dims=(3, 32, 32),
+            num_filters=[8, 8, 8, 8, 8],
+            max_pools=[0, 1, 2, 3, 4],
+            batchnorm=False,
+            num_classes=10,
+            weight_scale=1e-3,
+            reg=0.0,
+            weight_initializer=None,
+            dtype=torch.float,
+            device='cpu'
+    ):
+        """
+            所有卷积层使用 kernel_size = 3, pad = 1,  池化层使用 2x2, stride = 2
+            对于 num_filters = [8, 8, 8]，网络结构如下：
+            第1层：卷积层 + [批归一化] + ReLU + [池化层]（取决于 max_pools 设置）
+            第2层：卷积层 + [批归一化] + ReLU + [池化层]（取决于 max_pools 设置）
+            第3层：卷积层 + [批归一化] + ReLU + [池化层]（取决于 max_pools 设置）
+            第4层：全连接层（输出层）
+            max_pools列表表示使用池化层的索引, 这里全使用
+        """
+        self.params = {}
+        self.num_layers = len(num_filters) + 1
+        self.max_pools = max_pools
+        self.batchnorm = batchnorm
+        self.reg = reg
+        self.dtype = dtype
+
+        if device == 'cuda':
+            device = 'cuda:0'
+
+        # 卷积层的权重 W{i} 的形状为 (out_channels, in_channels, kernel_size, kernel_size)
+        # 卷积层的偏置 b{i} 的形状为 (out_channels,)
+        C, H, W = input_dims
+        self.params['W1'] = torch.normal(mean=0.0, std=weight_scale, size=(num_filters[0], C, 3, 3), dtype=dtype,
+                                         device=device)
+        self.params['b1'] = torch.zeros(num_filters[0], dtype=dtype, device=device)
+
+        for i in range(2, self.num_layers):
+            self.params[f'W{i}'] = torch.normal(mean=0.0, std=weight_scale,
+                                                size=(num_filters[i - 1], num_filters[i - 2], 3, 3), dtype=dtype,
+                                                device=device)
+            self.params[f'b{i}'] = torch.zeros(num_filters[i - 1], dtype=dtype, device=device)
+
+        # 每次池化操作后图像宽高减半 , 共有len(max_pools)次池化操作
+        H_out = H // (2 ** len(max_pools))
+        W_out = W // (2 ** len(max_pools))
+        dim_out = num_filters[-1] * H_out * W_out
+        self.params[f'W{self.num_layers}'] = torch.normal(mean=0.0, std=weight_scale, size=(dim_out, num_classes),
+                                                          dtype=dtype, device=device)
+        self.params[f'b{self.num_layers}'] = torch.zeros(num_classes, dtype=dtype, device=device)
+
+        # ----------------------------------------------------------------------------------------------
+        self.bn_params = []
+        if self.batchnorm:
+            self.bn_params = [{'mode': 'train'}
+                              for _ in range(len(num_filters))]
+
+        # Check that we got the right number of parameters
+        if not self.batchnorm:
+            params_per_macro_layer = 2  # weight and bias
+        else:
+            params_per_macro_layer = 4  # weight, bias, scale, shift
+        num_params = params_per_macro_layer * len(num_filters) + 2
+        msg = 'self.params has the wrong number of ' \
+              'elements. Got %d; expected %d'
+        msg = msg % (len(self.params), num_params)
+        assert len(self.params) == num_params, msg
+
+        # Check that all parameters have the correct device and dtype:
+        for k, param in self.params.items():
+            msg = 'param "%s" has device %r; should be %r' \
+                  % (k, param.device, device)
+            assert param.device == torch.device(device), msg
+            msg = 'param "%s" has dtype %r; should be %r' \
+                  % (k, param.dtype, dtype)
+            assert param.dtype == dtype, msg
+
+    def save(self, path):
+        checkpoint = {
+          'reg': self.reg,
+          'dtype': self.dtype,
+          'params': self.params,
+          'num_layers': self.num_layers,
+          'max_pools': self.max_pools,
+          'batchnorm': self.batchnorm,
+          'bn_params': self.bn_params,
+        }
+        torch.save(checkpoint, path)
+        print("Saved in {}".format(path))
+
+    def load(self, path, dtype, device):
+        checkpoint = torch.load(path, map_location='cpu')
+        self.params = checkpoint['params']
+        self.dtype = dtype
+        self.reg = checkpoint['reg']
+        self.num_layers = checkpoint['num_layers']
+        self.max_pools = checkpoint['max_pools']
+        self.batchnorm = checkpoint['batchnorm']
+        self.bn_params = checkpoint['bn_params']
+
+        for p in self.params:
+            self.params[p] = \
+                self.params[p].type(dtype).to(device)
+
+        for i in range(len(self.bn_params)):
+            for p in ["running_mean", "running_var"]:
+                self.bn_params[i][p] = \
+                    self.bn_params[i][p].type(dtype).to(device)
+
+        print("load checkpoint file: {}".format(path))
+
+    def loss(self, X, y=None):
+        X = X.to(self.dtype)
+
+        filter_size = 3
+        conv_param = {
+            'stride': 1,
+            'pad': (filter_size - 1) // 2
+        }
+        pool_param = {
+            'pool_height': 2,
+            'pool_width': 2,
+            'stride': 2
+        }
+        scores = None
+        caches = []
+        for i in range(self.num_layers - 1):
+            w, b = self.params[f'W{i + 1}'], self.params[f'b{i + 1}']
+            if i in self.max_pools:
+                X, cache_i = Conv_ReLU_Pool.forward(X, w, b, conv_param, pool_param)
+            else:
+                X, cache_i = Conv_ReLU.forward(X, w, b, conv_param)
+            caches.append(cache_i)
+
+        w, b = self.params[f'W{self.num_layers}'], self.params[f'b{self.num_layers}']
+        scores, cache_fin = Linear.forward(X, w, b)
+        caches.append(cache_fin)
+
+        if y is None:
+            return scores
+
+        loss, grads = 0, {}
+
+        loss, d_scores = softmax_loss(scores, y)
+        for i in range(self.num_layers):
+            loss += self.reg * torch.sum(self.params[f'W{i + 1}'] ** 2)
+
+        dx, grads[f'W{self.num_layers}'], grads[f'b{self.num_layers}'] = Linear.backward(d_scores, caches[-1])
+        grads[f'W{self.num_layers}'] += 2 * self.reg * self.params[f'W{self.num_layers}']
+
+        for i in range(self.num_layers - 1, 0, -1):
+            if i - 1 in self.max_pools:
+                dx, grads[f'W{i}'], grads[f'b{i}'] = Conv_ReLU_Pool.backward(dx, caches[i - 1])
+            else:
+                dx, grads[f'W{i}'], grads[f'b{i}'] = Conv_ReLU.backward(dx, caches[i - 1])
+
+            grads[f'W{i}'] += 2 * self.reg * self.params[f'W{i}']
+
+        return loss, grads
 
 
+def find_overfit_parameters():
+    weight_scale = 2e-1
+    learning_rate = 5e-4
+
+    return weight_scale, learning_rate
