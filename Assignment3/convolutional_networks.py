@@ -325,29 +325,29 @@ class ThreeLayerConvNet(object):
 
 class DeepConvNet(object):
     def __init__(
-            self,
-            input_dims=(3, 32, 32),
-            num_filters=[8, 8, 8, 8, 8],
-            max_pools=[0, 1, 2, 3, 4],
-            batchnorm=False,
-            num_classes=10,
-            weight_scale=1e-3,
-            reg=0.0,
-            weight_initializer=None,
-            dtype=torch.float,
-            device='cpu'
+        self,
+        input_dims = (3, 32, 32),
+        num_filters = [8, 8, 8, 8, 8],
+        max_pools = [0, 1, 2, 3, 4],
+        num_classes = 10,
+        batchnorm = False,
+        reg = 0.0,
+        weight_scale = 1e-3,
+        weight_initializer = None,
+        dtype = torch.float,
+        device = 'cpu'
     ):
         """
-            所有卷积层使用 kernel_size = 3, pad = 1,  池化层使用 2x2, stride = 2
-            对于 num_filters = [8, 8, 8]，网络结构如下：
-            第1层：卷积层 + [批归一化] + ReLU + [池化层]（取决于 max_pools 设置）
-            第2层：卷积层 + [批归一化] + ReLU + [池化层]（取决于 max_pools 设置）
-            第3层：卷积层 + [批归一化] + ReLU + [池化层]（取决于 max_pools 设置）
-            第4层：全连接层（输出层）
-            max_pools列表表示使用池化层的索引, 这里全使用
+                   所有卷积层使用 kernel_size = 3, pad = 1,  池化层使用 2x2, stride = 2
+                   对于 num_filters = [8, 8, 8]，网络结构如下：
+                   第1层：卷积层 + [批归一化] + ReLU + [池化层]（取决于 max_pools 设置）
+                   第2层：卷积层 + [批归一化] + ReLU + [池化层]（取决于 max_pools 设置）
+                   第3层：卷积层 + [批归一化] + ReLU + [池化层]（取决于 max_pools 设置）
+                   第4层：全连接层（输出层）
+                   max_pools列表表示使用池化层的索引, 这里默认全使用
         """
         self.params = {}
-        self.num_layers = len(num_filters) + 1
+        L = self.num_layers = len(num_filters) + 1
         self.max_pools = max_pools
         self.batchnorm = batchnorm
         self.reg = reg
@@ -359,25 +359,23 @@ class DeepConvNet(object):
         # 卷积层的权重 W{i} 的形状为 (out_channels, in_channels, kernel_size, kernel_size)
         # 卷积层的偏置 b{i} 的形状为 (out_channels,)
         C, H, W = input_dims
-        self.params['W1'] = torch.normal(mean=0.0, std=weight_scale, size=(num_filters[0], C, 3, 3), dtype=dtype,
-                                         device=device)
+        self.params['W1'] = torch.normal(mean=0, std=weight_scale, size = (num_filters[0], C, 3, 3),
+                                         dtype=dtype, device=device)
         self.params['b1'] = torch.zeros(num_filters[0], dtype=dtype, device=device)
 
-        for i in range(2, self.num_layers):
-            self.params[f'W{i}'] = torch.normal(mean=0.0, std=weight_scale,
-                                                size=(num_filters[i - 1], num_filters[i - 2], 3, 3), dtype=dtype,
-                                                device=device)
-            self.params[f'b{i}'] = torch.zeros(num_filters[i - 1], dtype=dtype, device=device)
+        for i in range(2, L):
+            self.params[f'W{i}'] = torch.normal(mean=0, std=weight_scale, size = (num_filters[i-1], num_filters[i-2], 3, 3),
+                                                dtype=dtype, device=device)
+            self.params[f'b{i}'] = torch.zeros(num_filters[i-1], dtype=dtype, device=device)
 
         # 每次池化操作后图像宽高减半 , 共有len(max_pools)次池化操作
-        H_out = H // (2 ** len(max_pools))
-        W_out = W // (2 ** len(max_pools))
-        dim_out = num_filters[-1] * H_out * W_out
-        self.params[f'W{self.num_layers}'] = torch.normal(mean=0.0, std=weight_scale, size=(dim_out, num_classes),
-                                                          dtype=dtype, device=device)
-        self.params[f'b{self.num_layers}'] = torch.zeros(num_classes, dtype=dtype, device=device)
+        H_out = H // (len(max_pools) ** 2)
+        W_out = W // (len(max_pools) ** 2)
+        self.params[f'W{L}'] = torch.normal(mean=0, std=weight_scale, size = (num_filters[-1] * H_out * W_out, num_classes),
+                                            dtype = dtype, device = device)
+        self.params[f'b{L}'] = torch.zeros(num_classes, dtype=dtype, device=device)
 
-        # ----------------------------------------------------------------------------------------------
+
         self.bn_params = []
         if self.batchnorm:
             self.bn_params = [{'mode': 'train'}
@@ -405,13 +403,13 @@ class DeepConvNet(object):
 
     def save(self, path):
         checkpoint = {
-          'reg': self.reg,
-          'dtype': self.dtype,
-          'params': self.params,
-          'num_layers': self.num_layers,
-          'max_pools': self.max_pools,
-          'batchnorm': self.batchnorm,
-          'bn_params': self.bn_params,
+            'reg': self.reg,
+            'dtype': self.dtype,
+            'params': self.params,
+            'num_layers': self.num_layers,
+            'max_pools': self.max_pools,
+            'batchnorm': self.batchnorm,
+            'bn_params': self.bn_params,
         }
         torch.save(checkpoint, path)
         print("Saved in {}".format(path))
@@ -437,7 +435,7 @@ class DeepConvNet(object):
 
         print("load checkpoint file: {}".format(path))
 
-    def loss(self, X, y=None):
+    def loss(self, X, y = None):
         X = X.to(self.dtype)
 
         filter_size = 3
@@ -446,42 +444,40 @@ class DeepConvNet(object):
             'pad': (filter_size - 1) // 2
         }
         pool_param = {
+            'stride': 2,
             'pool_height': 2,
-            'pool_width': 2,
-            'stride': 2
+            'pool_width': 2
         }
-        scores = None
+        L = self.num_layers
         caches = []
-        for i in range(self.num_layers - 1):
-            w, b = self.params[f'W{i + 1}'], self.params[f'b{i + 1}']
+
+        for i in range(L-1):
+            w, b = self.params[f'W{i+1}'], self.params[f'b{i+1}']
             if i in self.max_pools:
                 X, cache_i = Conv_ReLU_Pool.forward(X, w, b, conv_param, pool_param)
             else:
                 X, cache_i = Conv_ReLU.forward(X, w, b, conv_param)
             caches.append(cache_i)
 
-        w, b = self.params[f'W{self.num_layers}'], self.params[f'b{self.num_layers}']
-        scores, cache_fin = Linear.forward(X, w, b)
+        scores, cache_fin = Linear.forward(X, self.params[f'W{L}'], self.params[f'b{L}'])
         caches.append(cache_fin)
 
         if y is None:
             return scores
 
-        loss, grads = 0, {}
-
+        loss, grads = 0.0, {}
         loss, d_scores = softmax_loss(scores, y)
-        for i in range(self.num_layers):
+        for i in range(L):
             loss += self.reg * torch.sum(self.params[f'W{i + 1}'] ** 2)
 
-        dx, grads[f'W{self.num_layers}'], grads[f'b{self.num_layers}'] = Linear.backward(d_scores, caches[-1])
-        grads[f'W{self.num_layers}'] += 2 * self.reg * self.params[f'W{self.num_layers}']
+        dh, grads[f'W{L}'], grads[f'b{L}'] = Linear.backward(d_scores, caches[-1])
+        grads[f'W{L}'] += 2 * self.reg * self.params[f'W{L}']
 
-        for i in range(self.num_layers - 1, 0, -1):
-            if i - 1 in self.max_pools:
-                dx, grads[f'W{i}'], grads[f'b{i}'] = Conv_ReLU_Pool.backward(dx, caches[i - 1])
+        for i in range(L-1, 0, -1):
+            if i-1 in self.max_pools:
+                dh, grads[f'W{i}'], grads[f'b{i}'] = Conv_ReLU_Pool.backward(dh, caches[i-1])
             else:
-                dx, grads[f'W{i}'], grads[f'b{i}'] = Conv_ReLU.backward(dx, caches[i - 1])
-
+                dh, grads[f'W{i}'], grads[f'b{i}'] = Conv_ReLU.backward(dh, caches[i-1])
             grads[f'W{i}'] += 2 * self.reg * self.params[f'W{i}']
 
         return loss, grads

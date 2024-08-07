@@ -445,71 +445,71 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 #     print('%s max relative error: %e' % (name, eecs598.grad.rel_error(grad_num, grads[name])))
 #   if reg == 0: print()
 # ----------------------------------------------------------------------------------------------
-# TODO: Use a DeepConvNet to overfit 50 training examples by
-# tweaking just the learning rate and initialization scale.
-from convolutional_networks import DeepConvNet, find_overfit_parameters
-from fully_connected_networks import adam
-
-reset_seed(0)
-num_train = 50
-small_data = {
-  'X_train': data_dict['X_train'][:num_train],
-  'y_train': data_dict['y_train'][:num_train],
-  'X_val': data_dict['X_val'],
-  'y_val': data_dict['y_val'],
-}
-input_dims = small_data['X_train'].shape[1:]
-
-
-# Update the parameters in find_overfit_parameters in convolutional_networks.py
-weight_scale, learning_rate = find_overfit_parameters()
-
-
-model = DeepConvNet(input_dims=input_dims, num_classes=10,
-                    num_filters=[8, 16, 32, 64],
-                    max_pools=[0, 1, 2, 3],
-                    reg=1e-5, weight_scale=weight_scale, dtype=torch.float32, device='cuda')
-solver = Solver(model, small_data,
-                print_every=10, num_epochs=30, batch_size=10,
-                update_rule=adam,
-                optim_config={
-                  'learning_rate': learning_rate,
-                },
-                device='cuda',
-         )
-# Turn off keep_best_params to allow final weights to be saved, instead of best weights on validation set.
-solver.train(return_best_params=False)
-
-plt.plot(solver.loss_history, 'o')
-plt.title('Training loss history')
-plt.xlabel('Iteration')
-plt.ylabel('Training loss')
-plt.show()
-
-val_acc = solver.check_accuracy(
-                        solver.X_train, solver.y_train, num_samples=solver.num_train_samples
-                    )
-print(val_acc)
-
-path = os.path.join('D:/PythonProject/UMichLearn/Assignment3', 'overfit_deepconvnet.pth')
-solver.model.save(path)
-# Create a new instance
-model = DeepConvNet(input_dims=input_dims, num_classes=10,
-                    num_filters=[8, 16, 32, 64],
-                    max_pools=[0, 1, 2, 3],
-                    reg=1e-5, weight_scale=weight_scale, dtype=torch.float32, device='cuda')
-solver = Solver(model, small_data,
-                print_every=10, num_epochs=30, batch_size=10,
-                update_rule=adam,
-                optim_config={
-                  'learning_rate': learning_rate,
-                },
-                device='cuda',
-         )
-
-# Load model
-solver.model.load(path, dtype=torch.float32, device='cuda')
-
-# Evaluate on validation set
-accuracy = solver.check_accuracy(small_data['X_train'], small_data['y_train'])
-print(f"Saved model's accuracy on training is {accuracy}")
+# # TODO: Use a DeepConvNet to overfit 50 training examples by
+# # tweaking just the learning rate and initialization scale.
+# from convolutional_networks import DeepConvNet, find_overfit_parameters
+# from fully_connected_networks import adam
+#
+# reset_seed(0)
+# num_train = 50
+# small_data = {
+#   'X_train': data_dict['X_train'][:num_train],
+#   'y_train': data_dict['y_train'][:num_train],
+#   'X_val': data_dict['X_val'],
+#   'y_val': data_dict['y_val'],
+# }
+# input_dims = small_data['X_train'].shape[1:]
+#
+#
+# # Update the parameters in find_overfit_parameters in convolutional_networks.py
+# weight_scale, learning_rate = find_overfit_parameters()
+#
+#
+# model = DeepConvNet(input_dims=input_dims, num_classes=10,
+#                     num_filters=[8, 16, 32, 64],
+#                     max_pools=[0, 1, 2, 3],
+#                     reg=1e-5, weight_scale=weight_scale, dtype=torch.float32, device='cuda')
+# solver = Solver(model, small_data,
+#                 print_every=10, num_epochs=30, batch_size=10,
+#                 update_rule=adam,
+#                 optim_config={
+#                   'learning_rate': learning_rate,
+#                 },
+#                 device='cuda',
+#          )
+# # Turn off keep_best_params to allow final weights to be saved, instead of best weights on validation set.
+# solver.train(return_best_params=False)
+#
+# plt.plot(solver.loss_history, 'o')
+# plt.title('Training loss history')
+# plt.xlabel('Iteration')
+# plt.ylabel('Training loss')
+# plt.show()
+#
+# val_acc = solver.check_accuracy(
+#                         solver.X_train, solver.y_train, num_samples=solver.num_train_samples
+#                     )
+# print(val_acc)
+#
+# path = os.path.join('D:/PythonProject/UMichLearn/Assignment3', 'overfit_deepconvnet.pth')
+# solver.model.save(path)
+# # Create a new instance
+# model = DeepConvNet(input_dims=input_dims, num_classes=10,
+#                     num_filters=[8, 16, 32, 64],
+#                     max_pools=[0, 1, 2, 3],
+#                     reg=1e-5, weight_scale=weight_scale, dtype=torch.float32, device='cuda')
+# solver = Solver(model, small_data,
+#                 print_every=10, num_epochs=30, batch_size=10,
+#                 update_rule=adam,
+#                 optim_config={
+#                   'learning_rate': learning_rate,
+#                 },
+#                 device='cuda',
+#          )
+#
+# # Load model
+# solver.model.load(path, dtype=torch.float32, device='cuda')
+#
+# # Evaluate on validation set
+# accuracy = solver.check_accuracy(small_data['X_train'], small_data['y_train'])
+# print(f"Saved model's accuracy on training is {accuracy}")
