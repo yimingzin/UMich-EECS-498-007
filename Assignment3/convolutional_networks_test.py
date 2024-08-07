@@ -513,3 +513,93 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 # # Evaluate on validation set
 # accuracy = solver.check_accuracy(small_data['X_train'], small_data['y_train'])
 # print(f"Saved model's accuracy on training is {accuracy}")
+# ----------------------------------------------------------------------------------------------
+# # Check the training-time forward pass by checking means and variances
+# # of features both before and after batch normalization
+# from convolutional_networks import BatchNorm
+#
+# def print_mean_std(x,dim=0):
+#   means = ['%.3f' % xx for xx in x.mean(dim=dim).tolist()]
+#   stds = ['%.3f' % xx for xx in x.std(dim=dim).tolist()]
+#   print('  means: ', means)
+#   print('  stds:  ', stds)
+#   print()
+#
+# # Simulate the forward pass for a two-layer network
+# reset_seed(0)
+# N, D1, D2, D3 = 200, 50, 60, 3
+# X = torch.randn(N, D1, dtype=torch.float64, device='cuda')
+# W1 = torch.randn(D1, D2, dtype=torch.float64, device='cuda')
+# W2 = torch.randn(D2, D3, dtype=torch.float64, device='cuda')
+# a = X.matmul(W1).clamp(min=0.).matmul(W2)
+#
+# print('Before batch normalization:')
+# print_mean_std(a,dim=0)
+#
+# # Run with gamma=1, beta=0. Means should be close to zero and stds close to one
+# gamma = torch.ones(D3, dtype=torch.float64, device='cuda')
+# beta = torch.zeros(D3, dtype=torch.float64, device='cuda')
+# print('After batch normalization (gamma=1, beta=0)')
+# a_norm, _ = BatchNorm.forward(a, gamma, beta, {'mode': 'train'})
+# print_mean_std(a_norm,dim=0)
+#
+# # Run again with nontrivial gamma and beta. Now means should be close to beta
+# # and std should be close to gamma.
+# gamma = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float64, device='cuda')
+# beta = torch.tensor([11.0, 12.0, 13.0], dtype=torch.float64, device='cuda')
+# print('After batch normalization (gamma=', gamma.tolist(), ', beta=', beta.tolist(), ')')
+# a_norm, _ = BatchNorm.forward(a, gamma, beta, {'mode': 'train'})
+# print_mean_std(a_norm,dim=0)
+#
+#
+# from convolutional_networks import BatchNorm
+#
+# reset_seed(0)
+# N, D1, D2, D3 = 200, 50, 60, 3
+# W1 = torch.randn(D1, D2, dtype=torch.float64, device='cuda')
+# W2 = torch.randn(D2, D3, dtype=torch.float64, device='cuda')
+#
+# bn_param = {'mode': 'train'}
+# gamma = torch.ones(D3, dtype=torch.float64, device='cuda')
+# beta = torch.zeros(D3, dtype=torch.float64, device='cuda')
+#
+# for t in range(500):
+#   X = torch.randn(N, D1, dtype=torch.float64, device='cuda')
+#   a = X.matmul(W1).clamp(min=0.).matmul(W2)
+#   BatchNorm.forward(a, gamma, beta, bn_param)
+#
+# bn_param['mode'] = 'test'
+# X = torch.randn(N, D1, dtype=torch.float64, device='cuda')
+# a = X.matmul(W1).clamp(min=0.).matmul(W2)
+# a_norm, _ = BatchNorm.forward(a, gamma, beta, bn_param)
+#
+# # Means should be close to zero and stds close to one, but will be
+# # noisier than training-time forward passes.
+# print('After batch normalization (test-time):')
+# print_mean_std(a_norm,dim=0)
+# ----------------------------------------------------------------------------------------------
+from convolutional_networks import BatchNorm
+
+# Gradient check batchnorm backward pass
+reset_seed(0)
+N, D = 4, 5
+x = 5 * torch.randn(N, D, dtype=torch.float64, device='cuda') + 12
+gamma = torch.randn(D, dtype=torch.float64, device='cuda')
+beta = torch.randn(D, dtype=torch.float64, device='cuda')
+dout = torch.randn(N, D, dtype=torch.float64, device='cuda')
+
+bn_param = {'mode': 'train'}
+fx = lambda x: BatchNorm.forward(x, gamma, beta, bn_param)[0]
+fg = lambda a: BatchNorm.forward(x, a, beta, bn_param)[0]
+fb = lambda b: BatchNorm.forward(x, gamma, b, bn_param)[0]
+
+dx_num = eecs598.grad.compute_numeric_gradient(fx, x, dout)
+da_num = eecs598.grad.compute_numeric_gradient(fg, gamma.clone(), dout)
+db_num = eecs598.grad.compute_numeric_gradient(fb, beta.clone(), dout)
+
+_, cache = BatchNorm.forward(x, gamma, beta, bn_param)
+dx, dgamma, dbeta = BatchNorm.backward(dout, cache)
+# You should expect to see relative errors between 1e-12 and 1e-9
+print('dx error: ', eecs598.grad.rel_error(dx_num, dx))
+print('dgamma error: ', eecs598.grad.rel_error(da_num, dgamma))
+print('dbeta error: ', eecs598.grad.rel_error(db_num, dbeta))

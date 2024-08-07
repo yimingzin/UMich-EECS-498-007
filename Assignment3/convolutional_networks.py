@@ -488,3 +488,85 @@ def find_overfit_parameters():
     learning_rate = 5e-4
 
     return weight_scale, learning_rate
+
+
+class BatchNorm(object):
+    @staticmethod
+    def forward(x, gamma, beta, bn_param):
+        """
+        BatchNorm
+                在训练过程中: 对当前小批量数据计算均值与方差, 进行标准化,同时通过 momentum 控制累积均值与方差
+        Args:
+            x:
+            gamma: 对标准化后的数据进行缩放
+            beta: 对标准化后的数据进行平移
+            bn_param:
+                mode: 'train' or 'test'
+                eps: prevent zero error
+                momentum: 控制均值和方差更新速度的超参数
+                running_mean & running_var: 在训练过程中保存累积的均值和方差, 在测试时使用保证数据的标准化和训练数据一致
+        Returns: out, cache
+        """
+        mode = bn_param['mode']
+        eps = bn_param.get('eps', 1e-5)
+        momentum = bn_param.get('momentum', 0.9)
+
+        N, D = x.shape
+        running_mean = bn_param.get('running_mean', torch.zeros(D, dtype=x.dtype, device=x.device))
+        running_var = bn_param.get('running_var', torch.zeros(D, dtype=x.dtype, device=x.device))
+
+        if mode == 'train':
+            # 求对应特征维度的均值
+            mean = torch.mean(x, dim=0)
+            # unbiased = False (correction=0) 使用有偏方差 即除以N
+            var = torch.var(x, dim=0, correction=0)
+            sigma = torch.sqrt(var + eps)
+            # 减均值除方差
+            x_std = (x - mean) / sigma
+            # 平移缩放
+            out = gamma * x_std + beta
+            cache = (mode, x, eps, gamma, mean, var, sigma, x_std)
+
+            running_mean = momentum * running_mean + (1 - momentum) * mean
+            running_var = momentum * running_var + (1 - momentum) * var
+
+        elif mode == 'test':
+            sigma = torch.sqrt(running_var + eps)
+            x_std = (x - running_mean) / sigma
+            out = gamma * x_std + beta
+            cache = (mode, x, eps, gamma, running_mean, running_var, sigma, x_std)
+
+        else:
+            raise ValueError('Invalid forward batchnorm mode %s' % mode)
+
+        # 把更新后的running_mean和running_var存回bn_param字典中, 同时将其从计算图中分离出来以防止梯度传播提高效率
+        bn_param['running_mean'] = running_mean.detach()
+        bn_param['running_var'] = running_var.detach()
+
+        return out, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        mode, x, eps, gamma, mean, var, sigma, x_std = cache
+        N, D = x.shape
+
+        if mode == 'train':
+
+            dgamma = torch.sum(dout * x_std, dim=0)
+            dbeta = torch.sum(dout, dim=0)
+
+            dx_std = dout * gamma
+            dvar = torch.sum(dx_std * (x - mean) * -0.5 * (var + eps) ** (-1.5), dim=0)
+            dmean = torch.sum(dx_std * -1.0 / sigma, dim=0) + dvar * torch.sum(-2.0 * (x - mean) / N, dim=0)
+
+            dx = dx_std * 1.0 / sigma + dvar * 2.0 * (x - mean) / N + dmean / N
+
+        elif mode == 'test':
+            dgamma = torch.sum(x_std * dout, dim=0)
+            dbeta = torch.sum(dout, dim=0)
+            dx = dout * gamma / sigma
+        else:
+            raise ValueError('Invalid backward batchnorm mode "%s"' % mode)
+
+        return dx, dgamma, dbeta
+
