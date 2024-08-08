@@ -2,7 +2,7 @@ import time
 
 import torch
 from a3_helper import softmax_loss
-from fully_connected_networks import Linear, Linear_ReLU, Solver, adam, ReLU
+from fully_connected_networks import Linear, Linear_ReLU, Solver, adam, ReLU, sgd_momentum, sgd
 
 
 class Conv(object):
@@ -359,20 +359,39 @@ class DeepConvNet(object):
         # 卷积层的权重 W{i} 的形状为 (out_channels, in_channels, kernel_size, kernel_size)
         # 卷积层的偏置 b{i} 的形状为 (out_channels,)
         C, H, W = input_dims
-        self.params['W1'] = torch.normal(mean=0, std=weight_scale, size = (num_filters[0], C, 3, 3),
-                                         dtype=dtype, device=device)
+        if weight_scale == 'kaiming':
+            self.params['W1'] = kaiming_initializer(C, num_filters[0], K=3, relu=True, dtype=dtype, device=device)
+        else:
+            self.params['W1'] = torch.normal(mean=0.0, std=weight_scale, size=(num_filters[0], C, 3, 3),
+                                             dtype=dtype, device=device)
         self.params['b1'] = torch.zeros(num_filters[0], dtype=dtype, device=device)
+        if self.batchnorm:
+            self.params['gamma1'] = torch.ones(num_filters[0], dtype=dtype, device=device)
+            self.params['beta1'] = torch.zeros(num_filters[0], dtype=dtype, device=device)
+
 
         for i in range(2, L):
-            self.params[f'W{i}'] = torch.normal(mean=0, std=weight_scale, size = (num_filters[i-1], num_filters[i-2], 3, 3),
-                                                dtype=dtype, device=device)
+            if weight_scale == 'kaiming':
+                self.params[f'W{i}'] = kaiming_initializer(num_filters[i-2], num_filters[i-1], K=3, relu=True, dtype=dtype, device=device)
+            else:
+                self.params[f'W{i}'] = torch.normal(mean=0.0, std=weight_scale,
+                                                    size=(num_filters[i - 1], num_filters[i - 2], 3, 3),
+                                                    dtype=dtype, device=device)
+
             self.params[f'b{i}'] = torch.zeros(num_filters[i-1], dtype=dtype, device=device)
+            if self.batchnorm:
+                self.params[f'gamma{i}'] = torch.ones(num_filters[i - 1], dtype=dtype, device=device)
+                self.params[f'beta{i}'] = torch.zeros(num_filters[i - 1], dtype=dtype, device=device)
 
         # 每次池化操作后图像宽高减半 , 共有len(max_pools)次池化操作
-        H_out = H // (len(max_pools) ** 2)
-        W_out = W // (len(max_pools) ** 2)
-        self.params[f'W{L}'] = torch.normal(mean=0, std=weight_scale, size = (num_filters[-1] * H_out * W_out, num_classes),
-                                            dtype = dtype, device = device)
+        H_out = H // (2 ** len(max_pools))
+        W_out = W // (2 ** len(max_pools))
+        dim_out = num_filters[-1] * H_out * W_out
+        if weight_scale == 'kaiming':
+            self.params[f'W{L}'] = kaiming_initializer(dim_out, num_classes, K=None, relu=False, dtype=dtype, device=device)
+        else:
+            self.params[f'W{L}'] = torch.normal(mean=0.0, std=weight_scale, size=(dim_out, num_classes),
+                                                dtype=dtype, device=device)
         self.params[f'b{L}'] = torch.zeros(num_classes, dtype=dtype, device=device)
 
 
@@ -438,6 +457,12 @@ class DeepConvNet(object):
     def loss(self, X, y = None):
         X = X.to(self.dtype)
 
+        mode = 'test' if y is None else 'train'
+
+        if self.batchnorm:
+            for bn_param in self.bn_params:
+                bn_param['mode'] = mode
+
         filter_size = 3
         conv_param = {
             'stride': 1,
@@ -453,11 +478,19 @@ class DeepConvNet(object):
 
         for i in range(L-1):
             w, b = self.params[f'W{i+1}'], self.params[f'b{i+1}']
-            if i in self.max_pools:
-                X, cache_i = Conv_ReLU_Pool.forward(X, w, b, conv_param, pool_param)
+            if self.batchnorm:
+                gamma, beta = self.params[f'gamma{i+1}'], self.params[f'beta{i+1}']
+                bn_param = self.bn_params[i]
+                if i in self.max_pools:
+                    X, cache = Conv_BatchNorm_ReLU_Pool.forward(X, w, b, gamma, beta, conv_param, bn_param, pool_param)
+                else:
+                    X, cache = Conv_BatchNorm_ReLU.forward(X, w, b, gamma, beta, conv_param, bn_param)
             else:
-                X, cache_i = Conv_ReLU.forward(X, w, b, conv_param)
-            caches.append(cache_i)
+                if i in self.max_pools:
+                    X, cache = Conv_ReLU_Pool.forward(X, w, b, conv_param, pool_param)
+                else:
+                    X, cache = Conv_ReLU.forward(X, w, b, conv_param)
+            caches.append(cache)
 
         scores, cache_fin = Linear.forward(X, self.params[f'W{L}'], self.params[f'b{L}'])
         caches.append(cache_fin)
@@ -474,12 +507,18 @@ class DeepConvNet(object):
         grads[f'W{L}'] += 2 * self.reg * self.params[f'W{L}']
 
         for i in range(L-1, 0, -1):
-            if i-1 in self.max_pools:
-                dh, grads[f'W{i}'], grads[f'b{i}'] = Conv_ReLU_Pool.backward(dh, caches[i-1])
+            if self.batchnorm:
+                if i - 1 in self.max_pools:
+                    dh, grads[f'W{i}'], grads[f'b{i}'], grads[f'gamma{i}'], grads[f'beta{i}'] = Conv_BatchNorm_ReLU_Pool.backward(dh, caches[i-1])
+                else:
+                    dh, grads[f'W{i}'], grads[f'b{i}'], grads[f'gamma{i}'], grads[f'beta{i}'] = Conv_BatchNorm_ReLU.backward(dh, caches[i-1])
             else:
-                dh, grads[f'W{i}'], grads[f'b{i}'] = Conv_ReLU.backward(dh, caches[i-1])
-            grads[f'W{i}'] += 2 * self.reg * self.params[f'W{i}']
+                if i - 1 in self.max_pools:
+                    dh, grads[f'W{i}'], grads[f'b{i}'] = Conv_ReLU_Pool.backward(dh, caches[i-1])
+                else:
+                    dh, grads[f'W{i}'], grads[f'b{i}'] = Conv_ReLU.backward(dh, caches[i-1])
 
+            grads[f'W{i}'] += 2 * self.reg * self.params[f'W{i}']
         return loss, grads
 
 
@@ -488,6 +527,57 @@ def find_overfit_parameters():
     learning_rate = 5e-4
 
     return weight_scale, learning_rate
+
+
+def create_convolutional_solver_instance(data_dict, dtype, device):
+    model = None
+    solver = None
+
+    model = DeepConvNet(num_filters=[32, 64, 128],
+                      max_pools=[1, 2],
+                      reg=1e-5,
+                      batchnorm=False,
+                      # batchnorm=True,
+                      weight_scale='kaiming',
+                      device=device)
+    solver = Solver(model, data_dict,
+                    optim_config={'learning_rate': 2e-1},
+                    lr_decay=0.98,
+                    num_epochs=60, batch_size=128,
+                    device=device, print_every=50)
+
+    return solver
+
+
+def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu', dtype=torch.float32):
+    """
+
+    Args:
+        Din:    输入维度 (神经元或通道数)
+        Dout:   输出维度 (神经元或通道数)
+        K:      卷积核大小，如果为 None 则初始化线性层的权重
+        relu:   如果为 True 则使用增益值为 2 (用于ReLU激活)，否则为 1 使用 Xavier 初始化
+        device:
+        dtype:
+
+    Returns:
+        weight: 初始化后的权重张量，线性层的形状为 (Din, Dout), 卷积层的形状为 (Dout, Din, K, K)
+    """
+    # gain = 2 - ReLU激活     gain = 1 - Xavier初始化
+    if relu:
+        gain = 2
+    else:
+        gain = 1
+
+    weight = None
+    # 线性层
+    if K is None:
+        weight = torch.normal(0.0, (gain / Din) ** 0.5, size=(Din, Dout), dtype=dtype, device=device)
+    # K不为None，则为卷积层
+    else:
+        weight = torch.normal(0.0, (gain / Din / K / K), size=(Dout, Din, K, K), dtype=dtype, device=device)
+
+    return weight
 
 
 class BatchNorm(object):
@@ -564,9 +654,116 @@ class BatchNorm(object):
         elif mode == 'test':
             dgamma = torch.sum(x_std * dout, dim=0)
             dbeta = torch.sum(dout, dim=0)
+            # x^hat_i = (x_i - mu) / sigma 链式求导
             dx = dout * gamma / sigma
         else:
             raise ValueError('Invalid backward batchnorm mode "%s"' % mode)
 
         return dx, dgamma, dbeta
 
+
+"""
+    SpatialBatchNorm    对形状为 (N ,C, H, W)的x输入数据进行处理为形状 (N * H * W, C)
+    批量归一化的核心思想是对每个特征维度进行标准化。在空间批量归一化中，我们希望对每个通道进行独立的标准化处理。因此，
+    对于每个通道 C，我们需要汇总该通道在所有样本 N 和空间位置 H × W 上的统计信息(均值和方差)
+    如果我们将输入数据重塑为形状 (N, C×H×W)，则每个通道的数据将不再独立，违背了批量归一化的设计
+"""
+class SpatialBatchNorm(object):
+    @staticmethod
+    def forward(x, gamma, beta, bn_param):
+        N, C, H, W = x.shape
+        # reshape to (N * H * W, C)
+        x_reshaped = x.permute(0, 2, 3, 1).reshape(-1, C)
+        out_reshaped, cache = BatchNorm.forward(x_reshaped, gamma, beta, bn_param)
+        # back to (N, C, H, W)
+        out = out_reshaped.reshape(N, H, W, C).permute(0, 3, 1, 2)
+
+        return out, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        N, C, H, W = dout.shape
+        dout_reshaped = dout.permute(0, 2, 3, 1).reshape(-1, C)
+        temp, d_gamma, d_beta = BatchNorm.backward(dout_reshaped, cache)
+        dx = temp.reshape(N, H, W, C).permute(0, 3, 1, 2)
+
+        return dx, d_gamma, d_beta
+
+
+class Linear_BatchNorm_ReLU(object):
+
+    @staticmethod
+    def forward(x, w, b, gamma, beta, bn_param):
+        """
+        Convenience layer that performs an linear transform,
+        batch normalization, and ReLU.
+        Inputs:
+        - x: Array of shape (N, D1); input to the linear layer
+        - w, b: Arrays of shape (D2, D2) and (D2,) giving the
+          weight and bias for the linear transform.
+        - gamma, beta: Arrays of shape (D2,) and (D2,) giving
+          scale and shift parameters for batch normalization.
+        - bn_param: Dictionary of parameters for batch
+          normalization.
+        Returns:
+        - out: Output from ReLU, of shape (N, D2)
+        - cache: Object to give to the backward pass.
+        """
+        a, fc_cache = Linear.forward(x, w, b)
+        a_bn, bn_cache = BatchNorm.forward(a, gamma, beta, bn_param)
+        out, relu_cache = ReLU.forward(a_bn)
+        cache = (fc_cache, bn_cache, relu_cache)
+        return out, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        """
+        Backward pass for the linear-batchnorm-relu
+        convenience layer.
+        """
+        fc_cache, bn_cache, relu_cache = cache
+        da_bn = ReLU.backward(dout, relu_cache)
+        da, dgamma, dbeta = BatchNorm.backward(da_bn, bn_cache)
+        dx, dw, db = Linear.backward(da, fc_cache)
+        return dx, dw, db, dgamma, dbeta
+
+
+class Conv_BatchNorm_ReLU(object):
+
+    @staticmethod
+    def forward(x, w, b, gamma, beta, conv_param, bn_param):
+        a, conv_cache = FastConv.forward(x, w, b, conv_param)
+        an, bn_cache = SpatialBatchNorm.forward(a, gamma,
+                                                beta, bn_param)
+        out, relu_cache = ReLU.forward(an)
+        cache = (conv_cache, bn_cache, relu_cache)
+        return out, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        conv_cache, bn_cache, relu_cache = cache
+        dan = ReLU.backward(dout, relu_cache)
+        da, dgamma, dbeta = SpatialBatchNorm.backward(dan, bn_cache)
+        dx, dw, db = FastConv.backward(da, conv_cache)
+        return dx, dw, db, dgamma, dbeta
+
+
+class Conv_BatchNorm_ReLU_Pool(object):
+
+    @staticmethod
+    def forward(x, w, b, gamma, beta, conv_param, bn_param, pool_param):
+        a, conv_cache = FastConv.forward(x, w, b, conv_param)
+        an, bn_cache = SpatialBatchNorm.forward(a, gamma, beta, bn_param)
+        s, relu_cache = ReLU.forward(an)
+        out, pool_cache = FastMaxPool.forward(s, pool_param)
+        cache = (conv_cache, bn_cache, relu_cache, pool_cache)
+        return out, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        conv_cache, bn_cache, relu_cache, pool_cache = cache
+        ds = FastMaxPool.backward(dout, pool_cache)
+        dan = ReLU.backward(ds, relu_cache)
+        da, dgamma, dbeta = SpatialBatchNorm.backward(dan, bn_cache)
+        dx, dw, db = FastConv.backward(da, conv_cache)
+        return dx, dw, db, dgamma, dbeta

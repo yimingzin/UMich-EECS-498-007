@@ -393,6 +393,7 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 # plt.gcf().set_size_inches(9, 4)
 # plt.show()
 # ----------------------------------------------------------------------------------------------
+# # Train the net (three-layer convolutional network) & Visualize Filters
 # from convolutional_networks import ThreeLayerConvNet
 # from fully_connected_networks import adam
 #
@@ -417,6 +418,7 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 # plt.gcf().set_size_inches(5, 5)
 # plt.show()
 # ----------------------------------------------------------------------------------------------
+# # Deep Convolutional Network loss & grad Check
 # from convolutional_networks import DeepConvNet
 # from fully_connected_networks import adam
 #
@@ -514,6 +516,94 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 # accuracy = solver.check_accuracy(small_data['X_train'], small_data['y_train'])
 # print(f"Saved model's accuracy on training is {accuracy}")
 # ----------------------------------------------------------------------------------------------
+# from convolutional_networks import DeepConvNet
+# from fully_connected_networks import sgd_momentum
+# reset_seed(0)
+#
+# # Try training a deep convolutional net with different weight initialization methods
+# num_train = 10000
+# small_data = {
+#   'X_train': data_dict['X_train'][:num_train],
+#   'y_train': data_dict['y_train'][:num_train],
+#   'X_val': data_dict['X_val'],
+#   'y_val': data_dict['y_val'],
+# }
+# input_dims = data_dict['X_train'].shape[1:]
+#
+# weight_scales = ['kaiming', 1e-1, 1e-2, 1e-3]
+#
+# solvers = []
+# for weight_scale in weight_scales:
+#   print('Solver with weight scale: ', weight_scale)
+#   model = DeepConvNet(input_dims=input_dims, num_classes=10,
+#                       num_filters=([8] * 10) + ([32] * 10) + ([128] * 10),
+#                       max_pools=[9, 19],
+#                       weight_scale=weight_scale,
+#                       reg=1e-5,
+#                       dtype=torch.float32,
+#                       device='cuda'
+#                       )
+#
+#   solver = Solver(model, small_data,
+#                   num_epochs=1, batch_size=128,
+#                   update_rule=sgd_momentum,
+#                   optim_config={
+#                     'learning_rate': 2e-3,
+#                   },
+#                   print_every=20, device='cuda')
+#   solver.train()
+#   solvers.append(solver)
+#
+#
+#   def plot_training_history_init(title, xlabel, solvers, labels, plot_fn, marker='-o'):
+#       plt.title(title)
+#       plt.xlabel(xlabel)
+#       for solver, label in zip(solvers, labels):
+#           data = plot_fn(solver)
+#           label = 'weight_scale=' + str(label)
+#           plt.plot(data, marker, label=label)
+#       plt.legend(loc='lower center', ncol=len(solvers))
+#
+#
+#   plt.subplot(3, 1, 1)
+#   plot_training_history_init('Training loss', 'Iteration', solvers, weight_scales,
+#                              lambda x: x.loss_history, marker='o')
+#   plt.subplot(3, 1, 2)
+#   plot_training_history_init('Training accuracy', 'Epoch', solvers, weight_scales,
+#                              lambda x: x.train_acc_history)
+#   plt.subplot(3, 1, 3)
+#   plot_training_history_init('Validation accuracy', 'Epoch', solvers, weight_scales,
+#                              lambda x: x.val_acc_history)
+#   plt.gcf().set_size_inches(15, 25)
+#   plt.show()
+# ----------------------------------------------------------------------------------------------
+from convolutional_networks import DeepConvNet, create_convolutional_solver_instance
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = True
+
+solver = create_convolutional_solver_instance(data_dict, torch.float32, "cuda")
+
+solver.train(time_limit=60)
+
+torch.backends.cudnn.benchmark = False
+print('Validation set accuracy: ', solver.check_accuracy(data_dict['X_val'], data_dict['y_val']))
+print('Test set accuracy: ', solver.check_accuracy(data_dict['X_test'], data_dict['y_test']))
+path = os.path.join('D:/PythonProject/UMichLearn/Assignment3', 'one_minute_deepconvnet.pth')
+solver.model.save(path)
+
+# Create a new instance
+from convolutional_networks import DeepConvNet, create_convolutional_solver_instance
+
+solver = create_convolutional_solver_instance(data_dict, torch.float32, "cuda")
+
+# Load model
+solver.model.load(path, dtype=torch.float32, device='cuda')
+
+# Evaluate on validation set
+print('Validation set accuracy: ', solver.check_accuracy(data_dict['X_val'], data_dict['y_val']))
+print('Test set accuracy: ', solver.check_accuracy(data_dict['X_test'], data_dict['y_test']))
+# ----------------------------------------------------------------------------------------------
 # # Check the training-time forward pass by checking means and variances
 # # of features both before and after batch normalization
 # from convolutional_networks import BatchNorm
@@ -578,28 +668,322 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 # print('After batch normalization (test-time):')
 # print_mean_std(a_norm,dim=0)
 # ----------------------------------------------------------------------------------------------
-from convolutional_networks import BatchNorm
-
-# Gradient check batchnorm backward pass
-reset_seed(0)
-N, D = 4, 5
-x = 5 * torch.randn(N, D, dtype=torch.float64, device='cuda') + 12
-gamma = torch.randn(D, dtype=torch.float64, device='cuda')
-beta = torch.randn(D, dtype=torch.float64, device='cuda')
-dout = torch.randn(N, D, dtype=torch.float64, device='cuda')
-
-bn_param = {'mode': 'train'}
-fx = lambda x: BatchNorm.forward(x, gamma, beta, bn_param)[0]
-fg = lambda a: BatchNorm.forward(x, a, beta, bn_param)[0]
-fb = lambda b: BatchNorm.forward(x, gamma, b, bn_param)[0]
-
-dx_num = eecs598.grad.compute_numeric_gradient(fx, x, dout)
-da_num = eecs598.grad.compute_numeric_gradient(fg, gamma.clone(), dout)
-db_num = eecs598.grad.compute_numeric_gradient(fb, beta.clone(), dout)
-
-_, cache = BatchNorm.forward(x, gamma, beta, bn_param)
-dx, dgamma, dbeta = BatchNorm.backward(dout, cache)
-# You should expect to see relative errors between 1e-12 and 1e-9
-print('dx error: ', eecs598.grad.rel_error(dx_num, dx))
-print('dgamma error: ', eecs598.grad.rel_error(da_num, dgamma))
-print('dbeta error: ', eecs598.grad.rel_error(db_num, dbeta))
+# from convolutional_networks import BatchNorm
+#
+# # Gradient check batchnorm backward pass
+# reset_seed(0)
+# N, D = 4, 5
+# x = 5 * torch.randn(N, D, dtype=torch.float64, device='cuda') + 12
+# gamma = torch.randn(D, dtype=torch.float64, device='cuda')
+# beta = torch.randn(D, dtype=torch.float64, device='cuda')
+# dout = torch.randn(N, D, dtype=torch.float64, device='cuda')
+#
+# bn_param = {'mode': 'train'}
+# fx = lambda x: BatchNorm.forward(x, gamma, beta, bn_param)[0]
+# fg = lambda a: BatchNorm.forward(x, a, beta, bn_param)[0]
+# fb = lambda b: BatchNorm.forward(x, gamma, b, bn_param)[0]
+#
+# dx_num = eecs598.grad.compute_numeric_gradient(fx, x, dout)
+# da_num = eecs598.grad.compute_numeric_gradient(fg, gamma.clone(), dout)
+# db_num = eecs598.grad.compute_numeric_gradient(fb, beta.clone(), dout)
+#
+# _, cache = BatchNorm.forward(x, gamma, beta, bn_param)
+# dx, dgamma, dbeta = BatchNorm.backward(dout, cache)
+# # You should expect to see relative errors between 1e-12 and 1e-9
+# print('dx error: ', eecs598.grad.rel_error(dx_num, dx))
+# print('dgamma error: ', eecs598.grad.rel_error(da_num, dgamma))
+# print('dbeta error: ', eecs598.grad.rel_error(db_num, dbeta))
+# ----------------------------------------------------------------------------------------------
+# from convolutional_networks import BatchNorm
+#
+# reset_seed(0)
+# N, D = 128, 2048
+# x = 5 * torch.randn(N, D, dtype=torch.float64, device='cuda') + 12
+# gamma = torch.randn(D, dtype=torch.float64, device='cuda')
+# beta = torch.randn(D, dtype=torch.float64, device='cuda')
+# dout = torch.randn(N, D, dtype=torch.float64, device='cuda')
+#
+# bn_param = {'mode': 'train'}
+# out, cache = BatchNorm.forward(x, gamma, beta, bn_param)
+#
+# t1 = time.time()
+# dx1, dgamma1, dbeta1 = BatchNorm.backward(dout, cache)
+# t2 = time.time()
+# dx2, dgamma2, dbeta2 = BatchNorm.backward_alt(dout, cache)
+# t3 = time.time()
+#
+# print('dx difference: ', eecs598.grad.rel_error(dx1, dx2))
+# print('dgamma difference: ', eecs598.grad.rel_error(dgamma1, dgamma2))
+# print('dbeta difference: ', eecs598.grad.rel_error(dbeta1, dbeta2))
+# print('speedup: %.2fx' % ((t2 - t1) / (t3 - t2)))
+# ----------------------------------------------------------------------------------------------
+# # check SpatialBatchNorm forward
+# from convolutional_networks import SpatialBatchNorm
+#
+# reset_seed(0)
+# # Check the training-time forward pass by checking means and variances
+# # of features both before and after spatial batch normalization
+#
+# N, C, H, W = 2, 3, 4, 5
+# x = 4 * torch.randn(N, C, H, W, dtype=torch.float64, device='cuda') + 10
+#
+# print('Before spatial batch normalization:')
+# print('  Shape: ', x.shape)
+# print('  Means: ', x.mean(dim=(0, 2, 3)))
+# print('  Stds: ', x.std(dim=(0, 2, 3)))
+#
+# # Means should be close to zero and stds close to one
+# gamma = torch.ones(C, dtype=torch.float64, device='cuda')
+# beta = torch.zeros(C,dtype=torch.float64, device='cuda')
+# bn_param = {'mode': 'train'}
+# out, _ = SpatialBatchNorm.forward(x, gamma, beta, bn_param)
+# print('After spatial batch normalization:')
+# print('  Shape: ', out.shape)
+# print('  Means: ', out.mean(dim=(0, 2, 3)))
+# print('  Stds: ', out.std(dim=(0, 2, 3)))
+#
+# # Means should be close to beta and stds close to gamma
+# gamma = torch.tensor([3, 4, 5], dtype=torch.float64, device='cuda')
+# beta = torch.tensor([6, 7, 8], dtype=torch.float64, device='cuda')
+# out, _ = SpatialBatchNorm.forward(x, gamma, beta, bn_param)
+# print('After spatial batch normalization (nontrivial gamma, beta):')
+# print('  Shape: ', out.shape)
+# print('  Means: ', out.mean(dim=(0, 2, 3)))
+# print('  Stds: ', out.std(dim=(0, 2, 3)))
+#
+# reset_seed(0)
+# # Check the test-time forward pass by running the training-time
+# # forward pass many times to warm up the running averages, and then
+# # checking the means and variances of activations after a test-time
+# # forward pass.
+# N, C, H, W = 10, 4, 11, 12
+#
+# bn_param = {'mode': 'train'}
+# gamma = torch.ones(C, dtype=torch.float64, device='cuda')
+# beta = torch.zeros(C, dtype=torch.float64, device='cuda')
+# for t in range(50):
+#   x = 2.3 * torch.randn(N, C, H, W, dtype=torch.float64, device='cuda') + 13
+#   SpatialBatchNorm.forward(x, gamma, beta, bn_param)
+# bn_param['mode'] = 'test'
+# x = 2.3 * torch.randn(N, C, H, W, dtype=torch.float64, device='cuda') + 13
+# a_norm, _ = SpatialBatchNorm.forward(x, gamma, beta, bn_param)
+#
+# # Means should be close to zero and stds close to one, but will be
+# # noisier than training-time forward passes.
+# print('After spatial batch normalization (test-time):')
+# print('  means: ', a_norm.mean(dim=(0, 2, 3)))
+# print('  stds: ', a_norm.std(dim=(0, 2, 3)))
+# ----------------------------------------------------------------------------------------------
+# # check SpatialBatchNorm backward
+# reset_seed(0)
+# N, C, H, W = 2, 3, 4, 5
+# x = 5 * torch.randn(N, C, H, W, dtype=torch.float64, device='cuda') + 12
+# gamma = torch.randn(C, dtype=torch.float64, device='cuda')
+# beta = torch.randn(C, dtype=torch.float64, device='cuda')
+# dout = torch.randn(N, C, H, W, dtype=torch.float64, device='cuda')
+#
+# bn_param = {'mode': 'train'}
+# fx = lambda x: SpatialBatchNorm.forward(x, gamma, beta, bn_param)[0]
+# fg = lambda a: SpatialBatchNorm.forward(x, gamma, beta, bn_param)[0]
+# fb = lambda b: SpatialBatchNorm.forward(x, gamma, beta, bn_param)[0]
+#
+# dx_num = eecs598.grad.compute_numeric_gradient(fx, x, dout)
+# da_num = eecs598.grad.compute_numeric_gradient(fg, gamma, dout)
+# db_num = eecs598.grad.compute_numeric_gradient(fb, beta, dout)
+#
+# _, cache = SpatialBatchNorm.forward(x, gamma, beta, bn_param)
+# dx, dgamma, dbeta = SpatialBatchNorm.backward(dout, cache)
+# print('dx error: ', eecs598.grad.rel_error(dx_num, dx))
+# print('dgamma error: ', eecs598.grad.rel_error(da_num, dgamma))
+# print('dbeta error: ', eecs598.grad.rel_error(db_num, dbeta))
+# ----------------------------------------------------------------------------------------------
+# from convolutional_networks import DeepConvNet
+# reset_seed(0)
+#
+# num_inputs = 2
+# input_dims = (3, 8, 8)
+# num_classes = 10
+# X = torch.randn(num_inputs, *input_dims, dtype=torch.float64, device='cuda')
+# y = torch.randint(num_classes, size=(num_inputs,), dtype=torch.int64, device='cuda')
+#
+# for reg in [0, 3.14]:
+#   print('Running check with reg = ', reg)
+#   model = DeepConvNet(input_dims=input_dims, num_classes=num_classes,
+#                       num_filters=[8, 8, 8],
+#                       max_pools=[0, 2],
+#                       reg=reg, batchnorm=True,
+#                       weight_scale='kaiming',
+#                       dtype=torch.float64, device='cuda')
+#
+#   loss, grads = model.loss(X, y)
+#   # The relative errors should be up to the order of e-3
+#   for name in sorted(grads):
+#     f = lambda _: model.loss(X, y)[0]
+#     grad_num = eecs598.grad.compute_numeric_gradient(f, model.params[name])
+#     print('%s max relative error: %e' % (name, eecs598.grad.rel_error(grad_num, grads[name])))
+#   print()
+# ----------------------------------------------------------------------------------------------
+# #  train a deep convolutional network on a subset of 500 training examples both with and without batch normalization.
+# from convolutional_networks import DeepConvNet
+# reset_seed(0)
+#
+# # Try training a deep convolutional net with batchnorm
+# num_train = 500
+# small_data = {
+#   'X_train': data_dict['X_train'][:num_train],
+#   'y_train': data_dict['y_train'][:num_train],
+#   'X_val': data_dict['X_val'],
+#   'y_val': data_dict['y_val'],
+# }
+# input_dims = data_dict['X_train'].shape[1:]
+#
+# bn_model = DeepConvNet(input_dims=input_dims, num_classes=10,
+#                        num_filters=[16, 32, 32, 64, 64],
+#                        max_pools=[0, 1, 2, 3, 4],
+#                        weight_scale='kaiming',
+#                        batchnorm=True,
+#                        reg=1e-5,  dtype=torch.float32, device='cuda')
+# model = DeepConvNet(input_dims=input_dims, num_classes=10,
+#                     num_filters=[16, 32, 32, 64, 64],
+#                     max_pools=[0, 1, 2, 3, 4],
+#                     weight_scale='kaiming',
+#                     batchnorm=False,
+#                     reg=1e-5,  dtype=torch.float32, device='cuda')
+#
+# print('Solver with batch norm:')
+# bn_solver = Solver(bn_model, small_data,
+#                    num_epochs=10, batch_size=100,
+#                    update_rule=adam,
+#                    optim_config={
+#                      'learning_rate': 1e-3,
+#                    },
+#                    print_every=20, device='cuda')
+# bn_solver.train()
+#
+# print('\nSolver without batch norm:')
+# solver = Solver(model, small_data,
+#                 num_epochs=10, batch_size=100,
+#                 update_rule=adam,
+#                 optim_config={
+#                   'learning_rate': 1e-3,
+#                 },
+#                 print_every=20, device='cuda')
+# solver.train()
+#
+# def plot_training_history_bn(title, label, solvers, bn_solvers, plot_fn, bl_marker='.', bn_marker='.', labels=None):
+#   """utility function for plotting training history"""
+#   plt.title(title)
+#   plt.xlabel(label)
+#   bn_plots = [plot_fn(bn_solver) for bn_solver in bn_solvers]
+#   bl_plots = [plot_fn(solver) for solver in solvers]
+#   num_bn = len(bn_plots)
+#   num_bl = len(bl_plots)
+#   for i in range(num_bn):
+#     label='w/ BN'
+#     if labels is not None:
+#       label += str(labels[i])
+#     plt.plot(bn_plots[i], bn_marker, label=label)
+#   for i in range(num_bl):
+#     label='w/o BN'
+#     if labels is not None:
+#       label += str(labels[i])
+#     plt.plot(bl_plots[i], bl_marker, label=label)
+#   plt.legend(loc='lower center', ncol=num_bn+num_bl)
+#
+# plt.subplot(3, 1, 1)
+# plot_training_history_bn('Training loss','Iteration', [solver], [bn_solver], \
+#                       lambda x: x.loss_history, bl_marker='-o', bn_marker='-o')
+# plt.subplot(3, 1, 2)
+# plot_training_history_bn('Training accuracy','Epoch', [solver], [bn_solver], \
+#                       lambda x: x.train_acc_history, bl_marker='-o', bn_marker='-o')
+# plt.subplot(3, 1, 3)
+# plot_training_history_bn('Validation accuracy','Epoch', [solver], [bn_solver], \
+#                       lambda x: x.val_acc_history, bl_marker='-o', bn_marker='-o')
+#
+# plt.gcf().set_size_inches(15, 25)
+# plt.show()
+# ----------------------------------------------------------------------------------------------
+# from convolutional_networks import DeepConvNet
+# from fully_connected_networks import sgd_momentum
+# reset_seed(0)
+#
+# # Try training a very deep net with batchnorm
+# num_train = 10000
+# small_data = {
+#   'X_train': data_dict['X_train'][:num_train],
+#   'y_train': data_dict['y_train'][:num_train],
+#   'X_val': data_dict['X_val'],
+#   'y_val': data_dict['y_val'],
+# }
+# input_dims = data_dict['X_train'].shape[1:]
+# num_epochs = 5
+# lrs = [2e-1, 1e-1, 5e-2]
+# lrs = [5e-3, 1e-2, 2e-2]
+#
+# solvers = []
+# for lr in lrs:
+#   print('No normalization: learning rate = ', lr)
+#   model = DeepConvNet(input_dims=input_dims, num_classes=10,
+#                       num_filters=[8, 8, 8],
+#                       max_pools=[0, 1, 2],
+#                       weight_scale='kaiming',
+#                       batchnorm=False,
+#                       reg=1e-5, dtype=torch.float32, device='cuda')
+#   solver = Solver(model, small_data,
+#                   num_epochs=num_epochs, batch_size=100,
+#                   update_rule=sgd_momentum,
+#                   optim_config={
+#                     'learning_rate': lr,
+#                   },
+#                   verbose=False, device='cuda')
+#   solver.train()
+#   solvers.append(solver)
+#
+# bn_solvers = []
+# for lr in lrs:
+#   print('Normalization: learning rate = ', lr)
+#   bn_model = DeepConvNet(input_dims=input_dims, num_classes=10,
+#                          num_filters=[8, 8, 16, 16, 32, 32],
+#                          max_pools=[1, 3, 5],
+#                          weight_scale='kaiming',
+#                          batchnorm=True,
+#                          reg=1e-5, dtype=torch.float32, device='cuda')
+#   bn_solver = Solver(bn_model, small_data,
+#                      num_epochs=num_epochs, batch_size=128,
+#                      update_rule=sgd_momentum,
+#                      optim_config={
+#                        'learning_rate': lr,
+#                      },
+#                      verbose=False, device='cuda')
+#   bn_solver.train()
+#   bn_solvers.append(bn_solver)
+#
+# def plot_training_history_bn(title, label, solvers, bn_solvers, plot_fn, bl_marker='.', bn_marker='.', labels=None):
+#   """utility function for plotting training history"""
+#   plt.title(title)
+#   plt.xlabel(label)
+#   bn_plots = [plot_fn(bn_solver) for bn_solver in bn_solvers]
+#   bl_plots = [plot_fn(solver) for solver in solvers]
+#   num_bn = len(bn_plots)
+#   num_bl = len(bl_plots)
+#   for i in range(num_bn):
+#     label='w/ BN'
+#     if labels is not None:
+#       label += str(labels[i])
+#     plt.plot(bn_plots[i], bn_marker, label=label)
+#   for i in range(num_bl):
+#     label='w/o BN'
+#     if labels is not None:
+#       label += str(labels[i])
+#     plt.plot(bl_plots[i], bl_marker, label=label)
+#   plt.legend(loc='lower center', ncol=num_bn+num_bl)
+#
+# plt.subplot(2, 1, 1)
+# plot_training_history_bn('Training accuracy (Batch Normalization)','Epoch', solvers, bn_solvers, \
+#                       lambda x: x.train_acc_history, bl_marker='-^', bn_marker='-o', labels=[' lr={:.0e}'.format(lr) for lr in lrs])
+# plt.subplot(2, 1, 2)
+# plot_training_history_bn('Validation accuracy (Batch Normalization)','Epoch', solvers, bn_solvers, \
+#                       lambda x: x.val_acc_history, bl_marker='-^', bn_marker='-o', labels=[' lr={:.0e}'.format(lr) for lr in lrs])
+#
+# plt.gcf().set_size_inches(10, 15)
+# plt.show()
