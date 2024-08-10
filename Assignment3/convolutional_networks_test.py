@@ -577,32 +577,32 @@ data_dict = eecs598.data.preprocess_cifar10(cuda=True, dtype=torch.float64, flat
 #   plt.gcf().set_size_inches(15, 25)
 #   plt.show()
 # ----------------------------------------------------------------------------------------------
-from convolutional_networks import DeepConvNet, create_convolutional_solver_instance
-
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = True
-
-solver = create_convolutional_solver_instance(data_dict, torch.float32, "cuda")
-
-solver.train(time_limit=60)
-
-torch.backends.cudnn.benchmark = False
-print('Validation set accuracy: ', solver.check_accuracy(data_dict['X_val'], data_dict['y_val']))
-print('Test set accuracy: ', solver.check_accuracy(data_dict['X_test'], data_dict['y_test']))
-path = os.path.join('D:/PythonProject/UMichLearn/Assignment3', 'one_minute_deepconvnet.pth')
-solver.model.save(path)
-
-# Create a new instance
-from convolutional_networks import DeepConvNet, create_convolutional_solver_instance
-
-solver = create_convolutional_solver_instance(data_dict, torch.float32, "cuda")
-
-# Load model
-solver.model.load(path, dtype=torch.float32, device='cuda')
-
-# Evaluate on validation set
-print('Validation set accuracy: ', solver.check_accuracy(data_dict['X_val'], data_dict['y_val']))
-print('Test set accuracy: ', solver.check_accuracy(data_dict['X_test'], data_dict['y_test']))
+# from convolutional_networks import DeepConvNet, create_convolutional_solver_instance
+#
+# torch.backends.cudnn.deterministic = True
+# torch.backends.cudnn.benchmark = True
+#
+# solver = create_convolutional_solver_instance(data_dict, torch.float32, "cuda")
+#
+# solver.train(time_limit=60)
+#
+# torch.backends.cudnn.benchmark = False
+# print('Validation set accuracy: ', solver.check_accuracy(data_dict['X_val'], data_dict['y_val']))
+# print('Test set accuracy: ', solver.check_accuracy(data_dict['X_test'], data_dict['y_test']))
+# path = os.path.join('D:/PythonProject/UMichLearn/Assignment3', 'one_minute_deepconvnet.pth')
+# solver.model.save(path)
+#
+# # Create a new instance
+# from convolutional_networks import DeepConvNet, create_convolutional_solver_instance
+#
+# solver = create_convolutional_solver_instance(data_dict, torch.float32, "cuda")
+#
+# # Load model
+# solver.model.load(path, dtype=torch.float32, device='cuda')
+#
+# # Evaluate on validation set
+# print('Validation set accuracy: ', solver.check_accuracy(data_dict['X_val'], data_dict['y_val']))
+# print('Test set accuracy: ', solver.check_accuracy(data_dict['X_test'], data_dict['y_test']))
 # ----------------------------------------------------------------------------------------------
 # # Check the training-time forward pass by checking means and variances
 # # of features both before and after batch normalization

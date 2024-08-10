@@ -281,7 +281,7 @@ class FullyConnectedNet(object):
 
 def create_solver_instance(data_dict, dtype, device):
     model = TwoLayerNet(hidden_dim=200, dtype=dtype, device=device)
-    solver = solver = Solver(model, data_dict, optim_config={'learning_rate': 5e-2, },
+    solver = Solver(model, data_dict, optim_config={'learning_rate': 5e-2, },
                              lr_decay=0.95,
                              num_epochs=20, batch_size=100,
                              print_every=100,
@@ -360,6 +360,7 @@ def adam(w, dw, config = None):
     v = config['beta_2'] * config['v'] + (1 - config['beta_2']) * (dw ** 2)
     v_hat = v / (1 - config['beta_2'] ** config['t'])
 
+    # config['learning_rate'] = config['learning_rate'] * (1 - config['beta_2'] ** config['t'])**(1/2) / (1 - config['beta_1'] ** config['t'])
     next_w = w - (config['learning_rate'] * m_hat) / (torch.sqrt(v_hat) + config['epsilon'])
 
     config['m'], config['v'] = m, v

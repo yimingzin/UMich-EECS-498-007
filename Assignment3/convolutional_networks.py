@@ -575,7 +575,7 @@ def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu', dtype=torch.
         weight = torch.normal(0.0, (gain / Din) ** 0.5, size=(Din, Dout), dtype=dtype, device=device)
     # K不为None，则为卷积层
     else:
-        weight = torch.normal(0.0, (gain / Din / K / K), size=(Dout, Din, K, K), dtype=dtype, device=device)
+        weight = torch.normal(0.0, (gain / Din / K / K) ** 0.5, size=(Dout, Din, K, K), dtype=dtype, device=device)
 
     return weight
 
