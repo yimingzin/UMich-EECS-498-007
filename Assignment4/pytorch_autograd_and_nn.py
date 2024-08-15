@@ -387,3 +387,124 @@ def initialize_three_layer_conv_part4():
     optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum, weight_decay=weight_decay, nesterov=True)
 
     return model, optimizer
+
+##############################################################################################
+# Part V. ResNet for CIFAR-10
+##############################################################################################
+
+class PlainBlock(nn.Module):
+    def __init__(self, Cin, Cout, downsample = False):
+        """
+        Spatial Batch Normalization => ReLU => Conv_1 3x3 padding = 1 , if down_sample = True stride=2 else = 1
+        => Spatial Batch Normalization => ReLU => Conv_2 3x3 padding = 1
+        """
+        super().__init__()
+        self.net = None
+        layer = []
+        # 1. Spatial Batch normalization
+        layer.append(nn.BatchNorm2d(Cin))
+        # 2. ReLU, 使用inplace = True 会回改变输入张量
+        layer.append(nn.ReLU(inplace=True))
+        # 3. Convolutional layer with Cout 3x3 filters
+        downsample_stride = 2 if downsample else 1
+        # 4. Conv_1, 从Cin特征图的通道数到Cout的特征图通道数 (一般是从小到大)
+        layer.append(nn.Conv2d(Cin, Cout, kernel_size=3, stride=downsample_stride, padding=1))
+        # 5. Spatial Batch normalization, 对Cout输出的特征图通道数做批归一化
+        layer.append(nn.BatchNorm2d(Cout))
+        # 6. ReLU
+        layer.append(nn.ReLU(inplace=True))
+        # 6. Convolutional layer with Cout 3x3 filters, 当我们希望在当前的通道数上提取更多信息时，且保持不改变特征图的宽度和深度
+        layer.append(nn.Conv2d(Cout, Cout, kernel_size=3, stride=1, padding=1))
+
+        self.net = nn.Sequential(*layer)
+
+    def forward(self, x):
+        return self.net(x)
+
+class ResidualBlock(nn.Module):
+    def __init__(self, Cin, Cout, downsample = False):
+        """
+            残差块的实现：假设 F 是 Plain块, 则残差块计算如下
+            R(x) = F(x) + x         - 但是这个公式只有 x 与 F(x)的形状相同时才符合，实际情况有两种原因导致输入与输出不同：
+            1. 输出通道数 Cout 不等于 输入通道数 Cin
+            2. Plain 块进行了下采样
+            所以对公式进行推广成为： R(x) = F(x) + G(x)
+            对 G(x) 进行分类讨论
+                1. 不进行下采样       - Cin = Cout 则 G(x) = x
+                                    - Cin != Cout 则 G(x) 是一个1x1 stride = 1输出为 Cout 的卷积
+                2. 进行下采样  - 执行相同的下采样操作  所以 G(x) 是一个 1x1 stride = 2 输出为 Cout 的卷积
+        """
+        super().__init__()
+        self.block = None
+        self.shortcut = None
+
+        self.block = PlainBlock(Cin, Cout, downsample)
+
+        if not downsample:
+            if Cin == Cout:
+                self.shortcut = nn.Identity()
+            else:
+                self.shortcut = nn.Conv2d(Cin, Cout, kernel_size=1, stride=1)
+        else:
+            self.shortcut = nn.Conv2d(Cin, Cout, kernel_size=1, stride=2)
+
+    def forward(self, x):
+        return self.block(x) + self.shortcut(x)
+
+class ResNetStage(nn.Module):
+    def __init__(self, Cin, Cout, num_blocks, downsample=True, block=ResidualBlock):
+        """
+        :param num_blocks: block的数量
+        :param block: 使用什么block
+        """
+        super().__init__()
+        blocks = [block(Cin, Cout, downsample)]
+        for _ in range(num_blocks - 1):
+            blocks.append(block(Cout, Cout))
+        self.net = nn.Sequential(*blocks)
+
+    def forward(self, x):
+        return self.net(x)
+
+class ResNetStem(nn.Module):
+    """
+        ResNet的 Stem 是网络的最开始部分， 通常用于对输入图像进行初步的特征提取
+        Cin = 3 对应 RGB, Cout = 8 表示处理后特征图深度为 8
+    """
+    def __init__(self, Cin = 3, Cout = 8):
+        super().__init__()
+        layers = [
+            nn.Conv2d(Cin, Cout, kernel_size=3, padding=1, stride=1)
+        ]
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class ResNet(nn.Module):
+    def __init__(self, stage_args, Cin=3, block=ResidualBlock, num_classes=10):
+        """
+             :param stage_args: 一个列表，每个元素是一个元组，描述了每个 ResNet 阶段的参数。
+             每个元组包含四个元素：Cin（输入通道数）、Cout（输出通道数）、num_blocks（残差块数量）和 downsample（是否下采样）
+        """
+        super().__init__()
+        self.cnn = None
+        layers = [ResNetStem(Cin, stage_args[0][0])]
+        for Cin, Cout, num_blocks, downsample in stage_args:
+            layers.append(ResNetStage(Cin, Cout, num_blocks, downsample, block=block))
+        self.cnn = nn.Sequential(*layers)
+        self.fc = nn.Linear(stage_args[-1][1], num_classes)
+
+    def forward(self, x):
+        scores = None
+        x = self.cnn(x)
+        N, C, H, W = x.shape
+        # 生成一个 1x1的特征图
+        # x = nn.AvgPool2d((H, W), stride=1)(x)
+        avg_pool = nn.AvgPool2d((H, W), stride=1)
+        x = avg_pool(x)
+        x = flatten(x)
+        scores = self.fc(x)
+
+        return scores
