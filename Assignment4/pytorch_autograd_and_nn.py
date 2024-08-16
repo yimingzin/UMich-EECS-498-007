@@ -508,3 +508,31 @@ class ResNet(nn.Module):
         scores = self.fc(x)
 
         return scores
+
+class ResidualBottleneckBlock(nn.Module):
+    def __init__(self, Cin, Cout, downsample = False):
+        super().__init__()
+        self.block = None
+        self.shortcut = None
+
+        self.block = nn.Sequential(
+            nn.BatchNorm2d(Cin),
+            nn.ReLU(),
+            nn.Conv2d(Cin, Cout // 4, kernel_size=1, stride=2 if downsample else 1),
+            nn.BatchNorm2d(Cout // 4),
+            nn.ReLU(),
+            nn.Conv2d(Cout // 4, Cout // 4, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(Cout // 4),
+            nn.ReLU(),
+            nn.Conv2d(Cout // 4, Cout, kernel_size=1)
+        )
+        if not downsample:
+            if Cin == Cout:
+                self.shortcut = nn.Identity()
+            else:
+                self.shortcut = nn.Conv2d(Cin, Cout, kernel_size=1, stride=1)
+        else:
+            self.shortcut = nn.Conv2d(Cin, Cout, kernel_size=1, stride=2)
+
+    def forward(self, x):
+        return self.block(x) + self.shortcut(x)

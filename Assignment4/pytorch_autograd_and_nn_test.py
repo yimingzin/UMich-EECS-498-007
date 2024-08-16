@@ -116,6 +116,68 @@ loader_train, loader_val, loader_test = load_CIFAR(path='./datasets/')
 # else:
 #   print('The output of ResNetStem without downsampling has an *incorrect* dimension! expected:', [2, 10, 5, 6], 'got:', list(model(data).shape))
 # ---------------------------------------------------------------------------------------------------
+# # example of specifications
+# networks = {
+#   'plain32': {
+#     'block': PlainBlock,
+#     'stage_args': [
+#       (8, 8, 5, False),
+#       (8, 16, 5, True),
+#       (16, 32, 5, True),
+#     ]
+#   },
+#   'resnet32': {
+#     'block': ResidualBlock,
+#     'stage_args': [
+#       (8, 8, 5, False),
+#       (8, 16, 5, True),
+#       (16, 32, 5, True),
+#     ]
+#   },
+# }
+#
+# def get_resnet(name):
+#   # YOUR_TURN: Impelement ResNet.__init__ and ResNet.forward
+#   return ResNet(**networks[name])
+#
+# names = ['plain32', 'resnet32']
+# acc_history_dict = {}
+# iter_history_dict = {}
+# for name in names:
+#   reset_seed(0)
+#   print(name, '\n')
+#   model = get_resnet(name)
+# #   init_module(model)
+#
+#   optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=.9, weight_decay=1e-4)
+#
+#   acc_history, iter_history = train_part345(optimizer, model, epoch=10, schedule=[6, 8], verbose=False)
+#   acc_history_dict[name] = acc_history
+#   iter_history_dict[name] = iter_history
+#
+# plt.title('Val accuracies')
+# for name in names:
+#   plt.plot(iter_history_dict[name], acc_history_dict[name], '-o')
+# plt.legend(names, loc='upper left')
+# plt.xlabel('iterations')
+# plt.ylabel('accuracy')
+# plt.gcf().set_size_inches(9, 4)
+# plt.show()
+# ---------------------------------------------------------------------------------------------------
+# data = torch.zeros(2, 3, 5, 6)
+# model = ResidualBottleneckBlock(3, 10)
+# if list(model(data).shape) == [2, 10, 5, 6]:
+#   print('The output of ResidualBlock without downsampling has a *correct* dimension!')
+# else:
+#   print('The output of ResidualBlock without downsampling has an *incorrect* dimension! expected:', [2, 10, 5, 6], 'got:', list(model(data).shape))
+#
+# data = torch.zeros(2, 3, 5, 6)
+# model = ResidualBottleneckBlock(3, 10, downsample=True)
+# if list(model(data).shape) == [2, 10, 3, 3]:
+#   print('The output of ResidualBlock with downsampling has a *correct* dimension!')
+# else:
+#   print('The output of ResidualBlock with downsampling has an *incorrect* dimension! expected:', [2, 10, 3, 3], 'got:', list(model(data).shape))
+# ---------------------------------------------------------------------------------------------------
 # example of specifications
 networks = {
   'plain32': {
@@ -140,7 +202,21 @@ def get_resnet(name):
   # YOUR_TURN: Impelement ResNet.__init__ and ResNet.forward
   return ResNet(**networks[name])
 
-names = ['plain32', 'resnet32']
+# example of specification
+networks.update({
+  'resnet47': {
+    'block': ResidualBottleneckBlock,
+    'stage_args': [
+      (32, 32, 5, False),
+      (32, 64, 5, True),
+      (64, 128, 5, True),
+    ],
+  },
+})
+
+print(get_resnet('resnet47'))
+
+names = ['plain32', 'resnet32', 'resnet47']
 acc_history_dict = {}
 iter_history_dict = {}
 for name in names:
