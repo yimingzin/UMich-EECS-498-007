@@ -399,24 +399,20 @@ class PlainBlock(nn.Module):
         => Spatial Batch Normalization => ReLU => Conv_2 3x3 padding = 1
         """
         super().__init__()
-        self.net = None
-        layer = []
-        # 1. Spatial Batch normalization
-        layer.append(nn.BatchNorm2d(Cin))
-        # 2. ReLU, 使用inplace = True 会回改变输入张量
-        layer.append(nn.ReLU(inplace=True))
-        # 3. Convolutional layer with Cout 3x3 filters
-        downsample_stride = 2 if downsample else 1
-        # 4. Conv_1, 从Cin特征图的通道数到Cout的特征图通道数 (一般是从小到大)
-        layer.append(nn.Conv2d(Cin, Cout, kernel_size=3, stride=downsample_stride, padding=1))
-        # 5. Spatial Batch normalization, 对Cout输出的特征图通道数做批归一化
-        layer.append(nn.BatchNorm2d(Cout))
-        # 6. ReLU
-        layer.append(nn.ReLU(inplace=True))
-        # 6. Convolutional layer with Cout 3x3 filters, 当我们希望在当前的通道数上提取更多信息时，且保持不改变特征图的宽度和深度
-        layer.append(nn.Conv2d(Cout, Cout, kernel_size=3, stride=1, padding=1))
-
-        self.net = nn.Sequential(*layer)
+        self.net = nn.Sequential(
+            # 1. Spatial Batch normalization
+            nn.BatchNorm2d(Cin),
+            # 2. ReLU, 使用inplace = True 会改变输入张量
+            nn.ReLU(),
+            # 3. Convolutional layer with Cout 3x3 filters
+            nn.Conv2d(Cin, Cout, kernel_size=3, stride=2 if downsample else 1, padding=1),
+            # 4. Spatial Batch normalization, 对Cout输出的特征图通道数做批归一化
+            nn.BatchNorm2d(Cout),
+            # 5. ReLU
+            nn.ReLU(),
+            # 6. Convolutional layer with Cout 3x3 filters, 当我们希望在当前的通道数上提取更多信息时，且保持不改变特征图的宽度和深度
+            nn.Conv2d(Cout, Cout, kernel_size=3, stride=1, padding=1)
+        )
 
     def forward(self, x):
         return self.net(x)
@@ -474,7 +470,8 @@ class ResNetStem(nn.Module):
     def __init__(self, Cin = 3, Cout = 8):
         super().__init__()
         layers = [
-            nn.Conv2d(Cin, Cout, kernel_size=3, padding=1, stride=1)
+            nn.Conv2d(Cin, Cout, kernel_size=3, padding=1, stride=1),
+            nn.ReLU()
         ]
         self.net = nn.Sequential(*layers)
 
