@@ -21,6 +21,7 @@ def svm_loss_naive(
 #   外层循环遍历num_train
     for i in range(num_train):
         #计算当前num_train在所有种类的得分
+        # X.shape (50, 3072)，则X[i] =  (3072, )是个一维向量，不要与矩阵的 1x3072 混淆
         scores = torch.mv(W.t(), X[i])
         #正确标签得分
         correct_scores = scores[y[i]]
@@ -147,6 +148,7 @@ def sample_batch(
         num_train: int,
         batch_size: int
 ):
+    # randint是从 0 到 num_train 每次都在这个范围内有放回的随机抽取一个索引, 抽取batch_size个, 最后形状为(batch_size, )
     random_samples = torch.randint(0, num_train, (batch_size, ))
     X_batch = X[random_samples]
     y_batch = y[random_samples]
