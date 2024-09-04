@@ -121,28 +121,28 @@ UNK_index = data_dict['vocab']['token_to_idx']['<UNK>']
 # print('dWh error: ', rel_error(dWh_num, dWh))
 # print('db error: ', rel_error(db_num, db))
 # ----------------------------------------------------------------------------------------------------
-N, T, D, H = 2, 3, 4, 5
-
-x = torch.linspace(-0.1, 0.3, steps=N*T*D, **to_double_cuda).reshape(N, T, D)
-h0 = torch.linspace(-0.3, 0.1, steps=N*H, **to_double_cuda).reshape(N, H)
-Wx = torch.linspace(-0.2, 0.4, steps=D*H, **to_double_cuda).reshape(D, H)
-Wh = torch.linspace(-0.4, 0.1, steps=H*H, **to_double_cuda).reshape(H, H)
-b = torch.linspace(-0.7, 0.1, steps=H, **to_double_cuda)
-
-# YOUR_TURN: Impelement rnn_forward
-h, _ = rnn_forward(x, h0, Wx, Wh, b)
-expected_h = torch.tensor([
-  [
-    [-0.42070749, -0.27279261, -0.11074945,  0.05740409,  0.22236251],
-    [-0.39525808, -0.22554661, -0.0409454,   0.14649412,  0.32397316],
-    [-0.42305111, -0.24223728, -0.04287027,  0.15997045,  0.35014525],
-  ],
-  [
-    [-0.55857474, -0.39065825, -0.19198182,  0.02378408,  0.23735671],
-    [-0.27150199, -0.07088804,  0.13562939,  0.33099728,  0.50158768],
-    [-0.51014825, -0.30524429, -0.06755202,  0.17806392,  0.40333043]]], **to_double_cuda)
-print('h error: ', rel_error(expected_h, h))
-
+# N, T, D, H = 2, 3, 4, 5
+#
+# x = torch.linspace(-0.1, 0.3, steps=N*T*D, **to_double_cuda).reshape(N, T, D)
+# h0 = torch.linspace(-0.3, 0.1, steps=N*H, **to_double_cuda).reshape(N, H)
+# Wx = torch.linspace(-0.2, 0.4, steps=D*H, **to_double_cuda).reshape(D, H)
+# Wh = torch.linspace(-0.4, 0.1, steps=H*H, **to_double_cuda).reshape(H, H)
+# b = torch.linspace(-0.7, 0.1, steps=H, **to_double_cuda)
+#
+# # YOUR_TURN: Impelement rnn_forward
+# h, _ = rnn_forward(x, h0, Wx, Wh, b)
+# expected_h = torch.tensor([
+#   [
+#     [-0.42070749, -0.27279261, -0.11074945,  0.05740409,  0.22236251],
+#     [-0.39525808, -0.22554661, -0.0409454,   0.14649412,  0.32397316],
+#     [-0.42305111, -0.24223728, -0.04287027,  0.15997045,  0.35014525],
+#   ],
+#   [
+#     [-0.55857474, -0.39065825, -0.19198182,  0.02378408,  0.23735671],
+#     [-0.27150199, -0.07088804,  0.13562939,  0.33099728,  0.50158768],
+#     [-0.51014825, -0.30524429, -0.06755202,  0.17806392,  0.40333043]]], **to_double_cuda)
+# print('h error: ', rel_error(expected_h, h))
+# ----------------------------------------------------------------------------------------------------
 reset_seed(0)
 
 N, D, T, H = 2, 3, 10, 5
@@ -177,33 +177,34 @@ print('dh0 error: ', rel_error(dh0_num, dh0))
 print('dWx error: ', rel_error(dWx_num, dWx))
 print('dWh error: ', rel_error(dWh_num, dWh))
 print('db error: ', rel_error(db_num, db))
-
-reset_seed(0)
-
-N, D, T, H = 2, 3, 10, 5
-
-# set requires_grad=True
-x = torch.randn(N, T, D, **to_double_cuda, requires_grad=True)
-h0 = torch.randn(N, H, **to_double_cuda, requires_grad=True)
-Wx = torch.randn(D, H, **to_double_cuda, requires_grad=True)
-Wh = torch.randn(H, H, **to_double_cuda, requires_grad=True)
-b = torch.randn(H, **to_double_cuda, requires_grad=True)
-
-out, cache = rnn_forward(x, h0, Wx, Wh, b)
-
-dout = torch.randn(*out.shape, **to_double_cuda)
-
-# manual backward
-with torch.no_grad():
-  dx, dh0, dWx, dWh, db = rnn_backward(dout, cache)
-
-# backward with autograd
-out.backward(dout) # the magic happens here!
-dx_auto, dh0_auto, dWx_auto, dWh_auto, db_auto = \
-  x.grad, h0.grad, Wx.grad, Wh.grad, b.grad
-
-print('dx error: ', rel_error(dx_auto, dx))
-print('dh0 error: ', rel_error(dh0_auto, dh0))
-print('dWx error: ', rel_error(dWx_auto, dWx))
-print('dWh error: ', rel_error(dWh_auto, dWh))
-print('db error: ', rel_error(db_auto, db))
+# ----------------------------------------------------------------------------------------------------
+#
+# reset_seed(0)
+#
+# N, D, T, H = 2, 3, 10, 5
+#
+# # set requires_grad=True
+# x = torch.randn(N, T, D, **to_double_cuda, requires_grad=True)
+# h0 = torch.randn(N, H, **to_double_cuda, requires_grad=True)
+# Wx = torch.randn(D, H, **to_double_cuda, requires_grad=True)
+# Wh = torch.randn(H, H, **to_double_cuda, requires_grad=True)
+# b = torch.randn(H, **to_double_cuda, requires_grad=True)
+#
+# out, cache = rnn_forward(x, h0, Wx, Wh, b)
+#
+# dout = torch.randn(*out.shape, **to_double_cuda)
+#
+# # manual backward
+# with torch.no_grad():
+#   dx, dh0, dWx, dWh, db = rnn_backward(dout, cache)
+#
+# # backward with autograd
+# out.backward(dout) # the magic happens here!
+# dx_auto, dh0_auto, dWx_auto, dWh_auto, db_auto = \
+#   x.grad, h0.grad, Wx.grad, Wh.grad, b.grad
+#
+# print('dx error: ', rel_error(dx_auto, dx))
+# print('dh0 error: ', rel_error(dh0_auto, dh0))
+# print('dWx error: ', rel_error(dWx_auto, dWx))
+# print('dWh error: ', rel_error(dWh_auto, dWh))
+# print('db error: ', rel_error(db_auto, db))
