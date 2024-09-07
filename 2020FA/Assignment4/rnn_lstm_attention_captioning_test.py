@@ -143,42 +143,42 @@ UNK_index = data_dict['vocab']['token_to_idx']['<UNK>']
 #     [-0.51014825, -0.30524429, -0.06755202,  0.17806392,  0.40333043]]], **to_double_cuda)
 # print('h error: ', rel_error(expected_h, h))
 # ----------------------------------------------------------------------------------------------------
-reset_seed(0)
-
-N, D, T, H = 2, 3, 10, 5
-
-x = torch.randn(N, T, D, **to_double_cuda)
-h0 = torch.randn(N, H, **to_double_cuda)
-Wx = torch.randn(D, H, **to_double_cuda)
-Wh = torch.randn(H, H, **to_double_cuda)
-b = torch.randn(H, **to_double_cuda)
-
-out, cache = rnn_forward(x, h0, Wx, Wh, b)
-
-dout = torch.randn(*out.shape, **to_double_cuda)
-
-# YOUR_TURN: Impelement rnn_backward
-dx, dh0, dWx, dWh, db = rnn_backward(dout, cache)
-
-fx = lambda x: rnn_forward(x, h0, Wx, Wh, b)[0]
-fh0 = lambda h0: rnn_forward(x, h0, Wx, Wh, b)[0]
-fWx = lambda Wx: rnn_forward(x, h0, Wx, Wh, b)[0]
-fWh = lambda Wh: rnn_forward(x, h0, Wx, Wh, b)[0]
-fb = lambda b: rnn_forward(x, h0, Wx, Wh, b)[0]
-
-dx_num = compute_numeric_gradient(fx, x, dout)
-dh0_num = compute_numeric_gradient(fh0, h0, dout)
-dWx_num = compute_numeric_gradient(fWx, Wx, dout)
-dWh_num = compute_numeric_gradient(fWh, Wh, dout)
-db_num = compute_numeric_gradient(fb, b, dout)
-
-print('dx error: ', rel_error(dx_num, dx))
-print('dh0 error: ', rel_error(dh0_num, dh0))
-print('dWx error: ', rel_error(dWx_num, dWx))
-print('dWh error: ', rel_error(dWh_num, dWh))
-print('db error: ', rel_error(db_num, db))
-# ----------------------------------------------------------------------------------------------------
+# reset_seed(0)
 #
+# N, D, T, H = 2, 3, 10, 5
+#
+# x = torch.randn(N, T, D, **to_double_cuda)
+# h0 = torch.randn(N, H, **to_double_cuda)
+# Wx = torch.randn(D, H, **to_double_cuda)
+# Wh = torch.randn(H, H, **to_double_cuda)
+# b = torch.randn(H, **to_double_cuda)
+#
+# out, cache = rnn_forward(x, h0, Wx, Wh, b)
+#
+# dout = torch.randn(*out.shape, **to_double_cuda)
+#
+# # YOUR_TURN: Impelement rnn_backward
+# dx, dh0, dWx, dWh, db = rnn_backward(dout, cache)
+#
+# fx = lambda x: rnn_forward(x, h0, Wx, Wh, b)[0]
+# fh0 = lambda h0: rnn_forward(x, h0, Wx, Wh, b)[0]
+# fWx = lambda Wx: rnn_forward(x, h0, Wx, Wh, b)[0]
+# fWh = lambda Wh: rnn_forward(x, h0, Wx, Wh, b)[0]
+# fb = lambda b: rnn_forward(x, h0, Wx, Wh, b)[0]
+#
+# dx_num = compute_numeric_gradient(fx, x, dout)
+# dh0_num = compute_numeric_gradient(fh0, h0, dout)
+# dWx_num = compute_numeric_gradient(fWx, Wx, dout)
+# dWh_num = compute_numeric_gradient(fWh, Wh, dout)
+# db_num = compute_numeric_gradient(fb, b, dout)
+#
+# print('dx error: ', rel_error(dx_num, dx))
+# print('dh0 error: ', rel_error(dh0_num, dh0))
+# print('dWx error: ', rel_error(dWx_num, dWx))
+# print('dWh error: ', rel_error(dWh_num, dWh))
+# print('db error: ', rel_error(db_num, db))
+# ----------------------------------------------------------------------------------------------------
+# #
 # reset_seed(0)
 #
 # N, D, T, H = 2, 3, 10, 5
@@ -208,3 +208,64 @@ print('db error: ', rel_error(db_num, db))
 # print('dWx error: ', rel_error(dWx_auto, dWx))
 # print('dWh error: ', rel_error(dWh_auto, dWh))
 # print('db error: ', rel_error(db_auto, db))
+# ----------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------
+# model = FeatureExtractor(pooling=True, verbose=True, device='cuda')
+# ----------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------
+# N, T, V, D = 2, 4, 5, 3
+#
+# x = torch.tensor([[0, 3, 1, 2], [2, 1, 0, 3]], **to_long_cuda)
+# W = torch.linspace(0, 1, steps=V*D, **to_double_cuda).reshape(V, D)
+#
+# # YOUR_TURN: Impelement WordEmbedding
+# model_emb = WordEmbedding(V, D, **to_double_cuda)
+# model_emb.W_embed.data.copy_(W)
+# out = model_emb(x)
+# expected_out = torch.tensor([
+#  [[ 0.,          0.07142857,  0.14285714],
+#   [ 0.64285714,  0.71428571,  0.78571429],
+#   [ 0.21428571,  0.28571429,  0.35714286],
+#   [ 0.42857143,  0.5,         0.57142857]],
+#  [[ 0.42857143,  0.5,         0.57142857],
+#   [ 0.21428571,  0.28571429,  0.35714286],
+#   [ 0.,          0.07142857,  0.14285714],
+#   [ 0.64285714,  0.71428571,  0.78571429]]], **to_double_cuda)
+#
+# print('out error: ', rel_error(expected_out, out))
+# ----------------------------------------------------------------------------------------------------
+# (Temporal) Affine layer
+
+reset_seed(0)
+
+N, T, D, M = 2, 3, 4, 3
+
+w = torch.linspace(-0.2, 0.4, steps=D*M, **to_double_cuda).reshape(D, M).permute(1, 0)
+b = torch.linspace(-0.4, 0.1, steps=M, **to_double_cuda)
+
+temporal_affine = nn.Linear(D, M).to(**to_double_cuda)
+temporal_affine.weight.data.copy_(w)
+temporal_affine.bias.data.copy_(b)
+
+# For regular affine layer
+x = torch.linspace(-0.1, 0.3, steps=N*D, **to_double_cuda).reshape(N, D)
+out = temporal_affine(x)
+print('affine layer - input shape: {}, output shape: {}'.format(x.shape, out.shape))
+correct_out = torch.tensor([[-0.35584416, -0.10896104,  0.13792208],
+                     [-0.31428571, -0.01753247,  0.27922078]], **to_double_cuda)
+
+print('dx error: ', rel_error(out, correct_out))
+
+
+# For temporal affine layer
+x = torch.linspace(-0.1, 0.3, steps=N*T*D, **to_double_cuda).reshape(N, T, D)
+out = temporal_affine(x)
+print('\ntemporal affine layer - input shape: {}, output shape: {}'.format(x.shape, out.shape))
+correct_out = torch.tensor([[[-0.39920949, -0.16533597,  0.06853755],
+                             [-0.38656126, -0.13750988,  0.11154150],
+                             [-0.37391304, -0.10968379,  0.15454545]],
+                            [[-0.36126482, -0.08185771,  0.19754941],
+                             [-0.34861660, -0.05403162,  0.24055336],
+                             [-0.33596838, -0.02620553,  0.28355731]]], **to_double_cuda)
+
+print('dx error: ', rel_error(out, correct_out))
