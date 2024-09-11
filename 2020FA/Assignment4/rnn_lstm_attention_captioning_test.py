@@ -234,38 +234,204 @@ UNK_index = data_dict['vocab']['token_to_idx']['<UNK>']
 #
 # print('out error: ', rel_error(expected_out, out))
 # ----------------------------------------------------------------------------------------------------
-# (Temporal) Affine layer
+# # (Temporal) Affine layer
+#
+# reset_seed(0)
+#
+# N, T, D, M = 2, 3, 4, 3
+#
+# w = torch.linspace(-0.2, 0.4, steps=D*M, **to_double_cuda).reshape(D, M).permute(1, 0)
+# b = torch.linspace(-0.4, 0.1, steps=M, **to_double_cuda)
+#
+# temporal_affine = nn.Linear(D, M).to(**to_double_cuda)
+# temporal_affine.weight.data.copy_(w)
+# temporal_affine.bias.data.copy_(b)
+#
+# # For regular affine layer
+# x = torch.linspace(-0.1, 0.3, steps=N*D, **to_double_cuda).reshape(N, D)
+# out = temporal_affine(x)
+# print('affine layer - input shape: {}, output shape: {}'.format(x.shape, out.shape))
+# correct_out = torch.tensor([[-0.35584416, -0.10896104,  0.13792208],
+#                      [-0.31428571, -0.01753247,  0.27922078]], **to_double_cuda)
+#
+# print('dx error: ', rel_error(out, correct_out))
+#
+#
+# # For temporal affine layer
+# x = torch.linspace(-0.1, 0.3, steps=N*T*D, **to_double_cuda).reshape(N, T, D)
+# out = temporal_affine(x)
+# print('\ntemporal affine layer - input shape: {}, output shape: {}'.format(x.shape, out.shape))
+# correct_out = torch.tensor([[[-0.39920949, -0.16533597,  0.06853755],
+#                              [-0.38656126, -0.13750988,  0.11154150],
+#                              [-0.37391304, -0.10968379,  0.15454545]],
+#                             [[-0.36126482, -0.08185771,  0.19754941],
+#                              [-0.34861660, -0.05403162,  0.24055336],
+#                              [-0.33596838, -0.02620553,  0.28355731]]], **to_double_cuda)
+#
+# print('dx error: ', rel_error(out, correct_out))
+# ----------------------------------------------------------------------------------------------------
+# def check_loss(N, T, V, p):
+#     x = 0.001 * torch.randn(N, T, V, **to_double_cuda)
+#     y = torch.randint(V, size=(N, T), **to_long_cuda)
+#     mask = torch.rand(N, T, **to_double_cuda)
+#     y[mask > p] = 0
+#     # YOUR_TURN: Impelement temporal_softmax_loss
+#     print(temporal_softmax_loss(x, y, NULL_index).item())
+#
+# check_loss(1000, 1, 10, 1.0)   # Should be about 2.00-2.11
+# check_loss(1000, 10, 10, 1.0)  # Should be about 20.6-21.0
+# check_loss(5000, 10, 10, 0.1) # Should be about 2.00-2.11
+# ----------------------------------------------------------------------------------------------------
+# reset_seed(0)
+#
+# N, D, W, H = 10, 1280, 30, 40
+# D_img = 112
+# word_to_idx = {'<NULL>': 0, 'cat': 2, 'dog': 3}
+# V = len(word_to_idx)
+# T = 13
+#
+# # YOUR_TURN: Impelement CaptioningRNN
+# model = CaptioningRNN(word_to_idx,
+#           input_dim=D,
+#           wordvec_dim=W,
+#           hidden_dim=H,
+#           cell_type='rnn',
+#           ignore_index=NULL_index,
+#           **to_float_cuda) # use float here to be consistent with MobileNet v2
+#
+#
+# for k,v in model.named_parameters():
+#   # print(k, v.shape) # uncomment this to see the weight shape
+#   v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
+#
+# images = torch.linspace(-3., 3., steps=(N * 3 * D_img * D_img),
+#                        **to_float_cuda).reshape(N, 3, D_img, D_img)
+# captions = (torch.arange(N * T, **to_long_cuda) % V).reshape(N, T)
+#
+# loss = model(images, captions).item()
+# expected_loss = 150.6090393066
+#
+# print('loss: ', loss)
+# print('expected loss: ', expected_loss)
+# print('difference: ', rel_error(torch.tensor(loss), torch.tensor(expected_loss)))
+# ----------------------------------------------------------------------------------------------------
+def captioning_train(rnn_model, image_data, caption_data, lr_decay=1, **kwargs):
+  """
+  Run optimization to train the model.
+  """
+  # optimizer setup
+  from torch import optim
+  optimizer = optim.Adam(
+    filter(lambda p: p.requires_grad, rnn_model.parameters()),
+    learning_rate) # leave betas and eps by default
+  lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer,
+                                             lambda epoch: lr_decay ** epoch)
 
+  # sample minibatch data
+  iter_per_epoch = math.ceil(image_data.shape[0] // batch_size)
+  loss_history = []
+  rnn_model.train()
+  for i in range(num_epochs):
+    start_t = time.time()
+    for j in range(iter_per_epoch):
+      images, captions = image_data[j*batch_size:(j+1)*batch_size], \
+                           caption_data[j*batch_size:(j+1)*batch_size]
+
+      loss = rnn_model(images, captions)
+      optimizer.zero_grad()
+      loss.backward()
+      loss_history.append(loss.item())
+      optimizer.step()
+    end_t = time.time()
+    print('(Epoch {} / {}) loss: {:.4f} time per epoch: {:.1f}s'.format(
+        i, num_epochs, loss.item(), end_t-start_t))
+
+    lr_scheduler.step()
+
+  # plot the training losses
+  plt.plot(loss_history)
+  plt.xlabel('Iteration')
+  plt.ylabel('Loss')
+  plt.title('Training loss history')
+  plt.show()
+  return rnn_model, loss_history
+
+# ----------------------------------------------------------------------------------------------------
+
+# reset_seed(0)
+#
+# # data input
+# small_num_train = 50
+# sample_idx = torch.linspace(0, num_train-1, steps=small_num_train, **to_long_cuda).to('cpu')
+# small_image_data = data_dict['train_images'][sample_idx].to('cuda')
+# small_caption_data = data_dict['train_captions'][sample_idx].to('cuda')
+#
+# # optimization arguments
+# num_epochs = 80
+# batch_size = 50
+#
+# # create the image captioning model
+# model = CaptioningRNN(
+#           cell_type='rnn',
+#           word_to_idx=data_dict['vocab']['token_to_idx'],
+#           input_dim=1280, # hard-coded, do not modify
+#           hidden_dim=512,
+#           wordvec_dim=256,
+#           ignore_index=NULL_index,
+#           **to_float_cuda)
+#
+# for learning_rate in [1e-3]:
+#   print('learning rate is: ', learning_rate)
+#   rnn_overfit, _ = captioning_train(model, small_image_data, small_caption_data,
+#                 num_epochs=num_epochs, batch_size=batch_size,
+#                 learning_rate=learning_rate)
+# ----------------------------------------------------------------------------------------------------
 reset_seed(0)
 
-N, T, D, M = 2, 3, 4, 3
+# data input
+small_num_train = num_train
+sample_idx = torch.randint(num_train, size=(small_num_train,), **to_long_cuda).to('cpu')
+small_image_data = data_dict['train_images'][sample_idx].to('cuda')
+small_caption_data = data_dict['train_captions'][sample_idx].to('cuda')
 
-w = torch.linspace(-0.2, 0.4, steps=D*M, **to_double_cuda).reshape(D, M).permute(1, 0)
-b = torch.linspace(-0.4, 0.1, steps=M, **to_double_cuda)
+# optimization arguments
+num_epochs = 60
+batch_size = 250
 
-temporal_affine = nn.Linear(D, M).to(**to_double_cuda)
-temporal_affine.weight.data.copy_(w)
-temporal_affine.bias.data.copy_(b)
+# create the image captioning model
+rnn_model = CaptioningRNN(
+          cell_type='rnn',
+          word_to_idx=data_dict['vocab']['token_to_idx'],
+          input_dim=1280, # hard-coded, do not modify
+          hidden_dim=512,
+          wordvec_dim=256,
+          ignore_index=NULL_index,
+          **to_float_cuda)
 
-# For regular affine layer
-x = torch.linspace(-0.1, 0.3, steps=N*D, **to_double_cuda).reshape(N, D)
-out = temporal_affine(x)
-print('affine layer - input shape: {}, output shape: {}'.format(x.shape, out.shape))
-correct_out = torch.tensor([[-0.35584416, -0.10896104,  0.13792208],
-                     [-0.31428571, -0.01753247,  0.27922078]], **to_double_cuda)
+# for learning_rate in [1e-3]:
+#   print('learning rate is: ', learning_rate)
+#   rnn_model_submit, rnn_loss_submit = captioning_train(rnn_model, small_image_data, small_caption_data,
+#                 num_epochs=num_epochs, batch_size=batch_size,
+#                 learning_rate=learning_rate)
 
-print('dx error: ', rel_error(out, correct_out))
+# ----------------------------------------------------------------------------------------------------
+# Sample a minibatch and show the reshaped 112x112 images,
+# GT captions, and generated captions by your model.
+batch_size = 3
 
+for split in ['train', 'val']:
+  sample_idx = torch.randint(0, num_train if split=='train' else num_val, (batch_size,))
+  sample_images = data_dict[split+'_images'][sample_idx]
+  sample_captions = data_dict[split+'_captions'][sample_idx]
 
-# For temporal affine layer
-x = torch.linspace(-0.1, 0.3, steps=N*T*D, **to_double_cuda).reshape(N, T, D)
-out = temporal_affine(x)
-print('\ntemporal affine layer - input shape: {}, output shape: {}'.format(x.shape, out.shape))
-correct_out = torch.tensor([[[-0.39920949, -0.16533597,  0.06853755],
-                             [-0.38656126, -0.13750988,  0.11154150],
-                             [-0.37391304, -0.10968379,  0.15454545]],
-                            [[-0.36126482, -0.08185771,  0.19754941],
-                             [-0.34861660, -0.05403162,  0.24055336],
-                             [-0.33596838, -0.02620553,  0.28355731]]], **to_double_cuda)
+  # decode_captions is loaded from a4_helper.py
+  gt_captions = decode_captions(sample_captions, data_dict['vocab']['idx_to_token'])
+  rnn_model.eval()
+  generated_captions = rnn_model.sample(sample_images)
+  generated_captions = decode_captions(generated_captions, data_dict['vocab']['idx_to_token'])
 
-print('dx error: ', rel_error(out, correct_out))
+  for i in range(batch_size):
+    plt.imshow(sample_images[i].permute(1, 2, 0))
+    plt.axis('off')
+    plt.title('%s\nRNN Generated:%s\nGT:%s' % (split, generated_captions[i], gt_captions[i]))
+    plt.show()

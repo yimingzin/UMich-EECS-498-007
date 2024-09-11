@@ -64,13 +64,15 @@ class FeatureExtractor(object):
 
 
 def rnn_step_forward(x, prev_h, Wx, Wh, b):
+
     next_h = torch.tanh(torch.mm(x, Wx) + torch.mm(prev_h, Wh) + b)
     cache = (x, prev_h, Wx, Wh, b, next_h)
     return next_h, cache
 
-
 def rnn_step_backward(dnext_h, cache):
+
     x, prev_h, Wx, Wh, b, next_h = cache
+
     dtanh = dnext_h * (1 - next_h ** 2)
 
     dx = torch.mm(dtanh, Wx.t())
@@ -81,33 +83,31 @@ def rnn_step_backward(dnext_h, cache):
 
     return dx, dprev_h, dWx, dWh, db
 
-
 def rnn_forward(x, h0, Wx, Wh, b):
     N, T, D = x.shape
     N, H = h0.shape
 
     h = torch.zeros((N, T, H), dtype=h0.dtype, device=h0.device)
-    cache = []
     prev_h = h0
+    cache = []
 
     for t in range(T):
         next_h, cache_step = rnn_step_forward(x[:, t, :], prev_h, Wx, Wh, b)
         h[:, t, :] = next_h
-        cache.append(cache_step)
         prev_h = next_h
+        cache.append(cache_step)
 
     return h, cache
-
 
 def rnn_backward(dh, cache):
     N, T, H = dh.shape
     N, D = cache[0][0].shape
 
-    dx = torch.zeros((N, T, D), dtype=cache[0][0].dtype, device=cache[0][0].device)
-    dprev_h = torch.zeros_like(cache[0][1], dtype=cache[0][1].dtype, device=cache[0][2].device)
-    dWx = torch.zeros_like(cache[0][2], dtype=cache[0][2].dtype, device=cache[0][2].device)
-    dWh = torch.zeros_like(cache[0][3], dtype=cache[0][3].dtype, device=cache[0][3].device)
-    db = torch.zeros_like(cache[0][4], dtype=cache[0][4].dtype, device=cache[0][4].device)
+    dx = torch.zeros((N, T, D), dtype=dh.dtype, device=dh.device)
+    dprev_h = torch.zeros_like(cache[0][1], dtype=dh.dtype, device=dh.device)
+    dWx = torch.zeros_like(cache[0][2], dtype=dh.dtype, device=dh.device)
+    dWh = torch.zeros_like(cache[0][3], dtype=dh.dtype, device=dh.device)
+    db = torch.zeros_like(cache[0][4], dtype=dh.dtype, device=dh.device)
 
     for t in reversed(range(T)):
         dnext_h = dh[:, t, :] + dprev_h
@@ -120,14 +120,11 @@ def rnn_backward(dh, cache):
     dh0 = dprev_h
     return dx, dh0, dWx, dWh, db
 
-
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, device='cpu', dtype=torch.float32):
         super().__init__()
-        self.Wx = Parameter(
-            torch.randn((input_size, hidden_size), dtype=dtype, device=device).div(math.sqrt(input_size)))
-        self.Wh = Parameter(
-            torch.randn((hidden_size, hidden_size), dtype=dtype, device=device).div(math.sqrt(hidden_size)))
+        self.Wx = Parameter(torch.randn((input_size, hidden_size), dtype=dtype, device=device).div(math.sqrt(input_size)))
+        self.Wh = Parameter(torch.randn((hidden_size, hidden_size), dtype=dtype, device=device).div(math.sqrt(hidden_size)))
         self.b = Parameter(torch.zeros(hidden_size, dtype=dtype, device=device))
 
     def forward(self, x, h0):
@@ -138,15 +135,99 @@ class RNN(nn.Module):
         next_h, _ = rnn_step_forward(x, prev_h, self.Wx, self.Wh, self.b)
         return next_h
 
-
 class WordEmbedding(nn.Module):
     def __init__(self, vocab_size, embed_size, device='cpu', dtype=torch.float32):
         super().__init__()
-        self.W_embed = Parameter(
-            torch.randn((vocab_size, embed_size), dtype=dtype, device=device).div(math.sqrt(vocab_size)))
+        self.W_embed = Parameter(torch.randn((vocab_size, embed_size), dtype=dtype, device=device).div(math.sqrt(vocab_size)))
 
-    # x.shape = (N, T), 表示一个批量中有N个样本，每个样本包含T个单词，这里是17个
-    # W_embed.shape = (vocab_size, embed_size), W_embed[x].shape = (N, T, embed_size)
     def forward(self, x):
-        out = self.W_embed[x]
-        return out
+        return self.W_embed[x]
+
+def temporal_softmax_loss(x, y, ignore_index = None):
+    N, T, V = x.shape
+    N, T = y.shape
+
+    x_flat = x.reshape(N*T, V)
+    y_flat = y.reshape(N*T)
+
+    loss = F.cross_entropy(x_flat, y_flat, ignore_index=ignore_index, reduction='sum')
+    loss /= N
+
+    return loss
+
+class CaptioningRNN(nn.Module):
+    def __init__(self, word_to_idx, input_dim=512, wordvec_dim=128,
+                 hidden_dim=128, cell_type='rnn', device='cpu',
+                 ignore_index = None, dtype=torch.float32):
+        super().__init__()
+
+        if cell_type not in {'rnn', 'lstm', 'attention'}:
+            raise ValueError('Invalid cell_type "%s"' % cell_type)
+
+        self.cell_type = cell_type
+        self.word_to_idx = word_to_idx
+        self.idx_to_word = {i: w for w, i in word_to_idx.items()}
+
+        vocab_size = len(word_to_idx)
+
+        self._null = word_to_idx['<NULL>']
+        self._start = word_to_idx.get('<START>', None)
+        self._end = word_to_idx.get('<END>', None)
+        self.ignore_index = ignore_index
+
+        if self.cell_type in ['rnn', 'lstm']:
+            self.feature_extractor = FeatureExtractor(pooling=True, device=device, dtype=dtype)
+        else:
+            self.feature_extractor = FeatureExtractor(pooling=False, device=device, dtype=dtype)
+
+        self.project_feature = nn.Linear(input_dim, hidden_dim, device=device, dtype=dtype)
+        self.word_embedding = WordEmbedding(vocab_size, wordvec_dim, device=device, dtype=dtype)
+
+        if self.cell_type == 'rnn':
+            self.network = RNN(wordvec_dim, hidden_dim, device=device, dtype=dtype)
+
+        self.project_output = nn.Linear(hidden_dim, vocab_size).to(device=device, dtype=dtype)
+
+    def forward(self, images, captions):
+        captions_in = captions[:, :-1]
+        captions_out = captions[:, 1:]
+
+        loss = 0.0
+
+        word_vectors = self.word_embedding.forward(captions_in)
+        image_features = self.feature_extractor.extract_mobilenet_feature(images)
+        if self.cell_type in ['rnn', 'lstm']:
+            h0 = self.project_feature(image_features)
+            hT = self.network.forward(word_vectors, h0)
+
+        scores = self.project_output(hT)
+        loss = temporal_softmax_loss(scores, captions_out, self.ignore_index)
+
+        return loss
+
+    def sample(self, images, max_length=15):
+        N = images.shape[0]
+        captions = self._null * images.new(N, max_length).fill_(1).long()
+
+        if self.cell_type == 'attention':
+            attn_weights_all = images.new(N, max_length, 4, 4).fill_(0).fload()
+
+        image_features = self.feature_extractor.extract_mobilenet_feature(images)
+        if self.cell_type == 'rnn':
+            h = self.project_feature(image_features)
+
+        words = self._start * images.new(N, 1).long()
+        for i in range(max_length):
+            x = self.word_embedding.forward(words).reshape(N, -1)
+            if self.cell_type == 'rnn':
+                h = self.network.step_forward(x, h)
+
+            scores = self.project_output(h)
+            words = torch.argmax(scores, dim=1)
+            captions[:, i] = words
+
+        if self.cell_type == 'attention':
+            return captions, attn_weights_all.cpu()
+        else:
+            return captions
+
