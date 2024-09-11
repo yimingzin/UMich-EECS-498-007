@@ -140,6 +140,14 @@ class WordEmbedding(nn.Module):
         super().__init__()
         self.W_embed = Parameter(torch.randn((vocab_size, embed_size), dtype=dtype, device=device).div(math.sqrt(vocab_size)))
 
+    #把x从离散的单词索引转换为连续的向量表示
+    # x.shape = (N, T) N是句子的数量，T是每个句子的单词数量
+    '''
+    x = [
+        [4, 12, 5, 407, 0],  # 第一个句子：'a man on a bicycle <NULL>'
+        [7, 20, 15, 12, 8]   # 第二个句子：'the next two men in'
+    ]
+    '''
     def forward(self, x):
         return self.W_embed[x]
 
@@ -159,6 +167,14 @@ class CaptioningRNN(nn.Module):
     def __init__(self, word_to_idx, input_dim=512, wordvec_dim=128,
                  hidden_dim=128, cell_type='rnn', device='cpu',
                  ignore_index = None, dtype=torch.float32):
+        '''
+
+        :param word_to_idx: 数据集: 字典 {word : index}
+        :param input_dim: 如果为 rnn / lstm = 1280 else = 1280 * 4 * 4
+        :param wordvec_dim: 词嵌入矩阵维度
+        :param hidden_dim:
+        :param cell_type: rnn or lstm
+        '''
         super().__init__()
 
         if cell_type not in {'rnn', 'lstm', 'attention'}:
@@ -166,10 +182,12 @@ class CaptioningRNN(nn.Module):
 
         self.cell_type = cell_type
         self.word_to_idx = word_to_idx
+        # 生成一个索引对应单词的字典
         self.idx_to_word = {i: w for w, i in word_to_idx.items()}
 
         vocab_size = len(word_to_idx)
 
+        # 取出 <NULL> <START> <END> 对应的索引
         self._null = word_to_idx['<NULL>']
         self._start = word_to_idx.get('<START>', None)
         self._end = word_to_idx.get('<END>', None)
@@ -189,6 +207,15 @@ class CaptioningRNN(nn.Module):
         self.project_output = nn.Linear(hidden_dim, vocab_size).to(device=device, dtype=dtype)
 
     def forward(self, images, captions):
+        '''
+        :param images: Input images, of shape (N, 3, 112, 112)
+        :param captions:  (N, T)  N是批次大小表示有多少句子， T是每个句子长度
+        :return:
+        '''
+
+        # captions_in 和 captions_out 的形状都是 (N, T-1)
+        # captions_in 告诉模型当前处理的单词是什么
+        # captions_out 告诉模型下一个正确的单词是什么
         captions_in = captions[:, :-1]
         captions_out = captions[:, 1:]
 
