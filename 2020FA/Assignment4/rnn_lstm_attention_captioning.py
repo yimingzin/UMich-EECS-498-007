@@ -234,27 +234,25 @@ class CaptioningRNN(nn.Module):
 
     def sample(self, images, max_length=15):
         N = images.shape[0]
+        # images.new() 创建了形状为(N, max_length) device和dtype都和images相同的张量，
+        # 填充为1转为长整型乘以self._null -> <NULL>对应的索引全部初始化为<NULL>
         captions = self._null * images.new(N, max_length).fill_(1).long()
 
-        if self.cell_type == 'attention':
-            attn_weights_all = images.new(N, max_length, 4, 4).fill_(0).fload()
-
-        image_features = self.feature_extractor.extract_mobilenet_feature(images)
+        image_features = self.feature_extract.extract_mobilenet_feature(images)
         if self.cell_type == 'rnn':
-            h = self.project_feature(image_features)
+            h = self.project_input(image_features)
 
+        # 初始化一个 [N, 1] 值全部为<START>索引的张量， 确保生成的描述从这个单词开始
         words = self._start * images.new(N, 1).long()
+
         for i in range(max_length):
-            x = self.word_embedding.forward(words).reshape(N, -1)
+            x = self.word_embed.forward(words).reshape(N, -1)
             if self.cell_type == 'rnn':
                 h = self.network.step_forward(x, h)
 
             scores = self.project_output(h)
             words = torch.argmax(scores, dim=1)
+            # 在每个单个时间步里模型同时处理N张图片，对N张图片生成一个单词，所以用列表示单词
             captions[:, i] = words
 
-        if self.cell_type == 'attention':
-            return captions, attn_weights_all.cpu()
-        else:
-            return captions
-
+        return captions

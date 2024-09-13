@@ -408,11 +408,11 @@ rnn_model = CaptioningRNN(
           ignore_index=NULL_index,
           **to_float_cuda)
 
-# for learning_rate in [1e-3]:
-#   print('learning rate is: ', learning_rate)
-#   rnn_model_submit, rnn_loss_submit = captioning_train(rnn_model, small_image_data, small_caption_data,
-#                 num_epochs=num_epochs, batch_size=batch_size,
-#                 learning_rate=learning_rate)
+for learning_rate in [1e-3]:
+  print('learning rate is: ', learning_rate)
+  rnn_model_submit, rnn_loss_submit = captioning_train(rnn_model, small_image_data, small_caption_data,
+                num_epochs=num_epochs, batch_size=batch_size,
+                learning_rate=learning_rate)
 
 # ----------------------------------------------------------------------------------------------------
 # Sample a minibatch and show the reshaped 112x112 images,
