@@ -260,3 +260,49 @@ class CaptioningRNN(nn.Module):
             captions[:, i] = words
 
         return captions
+
+#######################################################################################################
+# LSTM                                                                                                #
+#######################################################################################################
+
+def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b, attn = None, Wattn = None):
+    """
+        前向传播LSTM的单个时间步。
+        输入数据的维度为 D，隐藏状态的维度为 H，使用的小批量大小为 N。
+
+        Inputs:
+        - x: 输入数据，形状为 (N, D)
+        - prev_h: 上一时间步的隐藏状态，形状为 (N, H)
+        - prev_c: 上一时间步的单元状态，形状为 (N, H)
+        - Wx: 输入到隐藏层的权重，形状为 (D, 4H)
+        - Wh: 隐藏层到隐藏层的权重，形状为 (H, 4H)
+        - b: 偏置，形状为 (4H,)
+        - attn 和 Wattn 仅用于Attention LSTM，表示注意力输入和注意力输入的嵌入权重
+
+        返回一个元组：
+        - next_h: 下一时间步的隐藏状态，形状为 (N, H)
+        - next_c: 下一时间步的单元状态，形状为 (N, H)
+    """
+
+    N, H = prev_h.shape
+
+    if attn is None:
+        a = torch.mm(x, Wx) + torch.mm(prev_h, Wh) + b
+    else:
+        a = torch.mm(x, Wx) + torch.mm(prev_h, Wh) + torch.mm(attn, Wattn) + b
+
+    # input/forget/output/grid
+    ai = a[:, :H]
+    af = a[:, H:2*H]
+    ao = a[:, 2*H:3*H]
+    ag = a[:, 3*H:]
+
+    i = torch.sigmoid(ai)
+    f = torch.sigmoid(af)
+    o = torch.sigmoid(ao)
+    g = torch.tanh(ag)
+
+    next_c = f * prev_c + i * g
+    next_h = o * torch.tanh(next_c)
+
+    return next_h, next_c
