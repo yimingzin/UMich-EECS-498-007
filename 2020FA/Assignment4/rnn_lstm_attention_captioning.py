@@ -64,15 +64,13 @@ class FeatureExtractor(object):
 
 
 def rnn_step_forward(x, prev_h, Wx, Wh, b):
-
     next_h = torch.tanh(torch.mm(x, Wx) + torch.mm(prev_h, Wh) + b)
     cache = (x, prev_h, Wx, Wh, b, next_h)
     return next_h, cache
 
+
 def rnn_step_backward(dnext_h, cache):
-
     x, prev_h, Wx, Wh, b, next_h = cache
-
     dtanh = dnext_h * (1 - next_h ** 2)
 
     dx = torch.mm(dtanh, Wx.t())
@@ -83,21 +81,23 @@ def rnn_step_backward(dnext_h, cache):
 
     return dx, dprev_h, dWx, dWh, db
 
+
 def rnn_forward(x, h0, Wx, Wh, b):
     N, T, D = x.shape
     N, H = h0.shape
 
     h = torch.zeros((N, T, H), dtype=h0.dtype, device=h0.device)
-    prev_h = h0
     cache = []
+    prev_h = h0
 
     for t in range(T):
         next_h, cache_step = rnn_step_forward(x[:, t, :], prev_h, Wx, Wh, b)
         h[:, t, :] = next_h
-        prev_h = next_h
         cache.append(cache_step)
+        prev_h = next_h
 
     return h, cache
+
 
 def rnn_backward(dh, cache):
     N, T, H = dh.shape
@@ -120,11 +120,14 @@ def rnn_backward(dh, cache):
     dh0 = dprev_h
     return dx, dh0, dWx, dWh, db
 
+
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, device='cpu', dtype=torch.float32):
         super().__init__()
-        self.Wx = Parameter(torch.randn((input_size, hidden_size), dtype=dtype, device=device).div(math.sqrt(input_size)))
-        self.Wh = Parameter(torch.randn((hidden_size, hidden_size), dtype=dtype, device=device).div(math.sqrt(hidden_size)))
+        self.Wx = Parameter(
+            torch.randn((input_size, hidden_size), dtype=dtype, device=device).div(math.sqrt(input_size)))
+        self.Wh = Parameter(
+            torch.randn((hidden_size, hidden_size), dtype=dtype, device=device).div(math.sqrt(hidden_size)))
         self.b = Parameter(torch.zeros(hidden_size, dtype=dtype, device=device))
 
     def forward(self, x, h0):
@@ -140,18 +143,20 @@ class WordEmbedding(nn.Module):
         super().__init__()
         self.W_embed = Parameter(torch.randn((vocab_size, embed_size), dtype=dtype, device=device).div(math.sqrt(vocab_size)))
 
-    #把x从离散的单词索引转换为连续的向量表示
-    # x.shape = (N, T) N是句子的数量，T是每个句子的单词数量
-    '''
-    x = [
-        [4, 12, 5, 407, 0],  # 第一个句子：'a man on a bicycle <NULL>'
-        [7, 20, 15, 12, 8]   # 第二个句子：'the next two men in'
-    ]
-    '''
+        # 把x从离散的单词索引转换为连续的向量表示
+        # x.shape = (N, T) N是句子的数量，T是每个句子的单词数量
+        '''
+        x = [
+            [4, 12, 5, 407, 0],  # 第一个句子：'a man on a bicycle <NULL>'
+            [7, 20, 15, 12, 8]   # 第二个句子：'the next two men in'
+        ]
+        '''
     def forward(self, x):
-        return self.W_embed[x]
+        out = self.W_embed[x]
+        return out
 
 def temporal_softmax_loss(x, y, ignore_index = None):
+
     N, T, V = x.shape
     N, T = y.shape
 
@@ -164,17 +169,16 @@ def temporal_softmax_loss(x, y, ignore_index = None):
     return loss
 
 class CaptioningRNN(nn.Module):
-    def __init__(self, word_to_idx, input_dim=512, wordvec_dim=128,
-                 hidden_dim=128, cell_type='rnn', device='cpu',
-                 ignore_index = None, dtype=torch.float32):
-        '''
-
-        :param word_to_idx: 数据集: 字典 {word : index}
-        :param input_dim: 如果为 rnn / lstm = 1280 else = 1280 * 4 * 4
-        :param wordvec_dim: 词嵌入矩阵维度
-        :param hidden_dim:
-        :param cell_type: rnn or lstm
-        '''
+    def __init__(self, word_to_idx, input_dim = 512, wordvec_dim = 128,
+                 hidden_dim = 128, cell_type = 'rnn', device = 'cpu',
+                 ignore_index = None, dtype = torch.float32):
+        """
+            :param word_to_idx: 数据集: 字典 {word : index}
+            :param input_dim: 如果为 rnn / lstm = 1280 else = 1280 * 4 * 4
+            :param wordvec_dim: 词嵌入矩阵维度
+            :param hidden_dim:
+            :param cell_type: rnn or lstm
+        """
         super().__init__()
 
         if cell_type not in {'rnn', 'lstm', 'attention'}:
@@ -183,74 +187,74 @@ class CaptioningRNN(nn.Module):
         self.cell_type = cell_type
         self.word_to_idx = word_to_idx
         # 生成一个索引对应单词的字典
-        self.idx_to_word = {i: w for w, i in word_to_idx.items()}
+        self.idx_to_word = {i : w for w, i in word_to_idx.items()}
 
         vocab_size = len(word_to_idx)
 
         # 取出 <NULL> <START> <END> 对应的索引
         self._null = word_to_idx['<NULL>']
-        self._start = word_to_idx.get('<START>', None)
-        self._end = word_to_idx.get('<END>', None)
+        self._start = word_to_idx['<START>']
+        self._end = word_to_idx['<END>']
         self.ignore_index = ignore_index
 
-        if self.cell_type in ['rnn', 'lstm']:
+        if cell_type in ['rnn', 'lstm']:
             self.feature_extractor = FeatureExtractor(pooling=True, device=device, dtype=dtype)
         else:
             self.feature_extractor = FeatureExtractor(pooling=False, device=device, dtype=dtype)
 
-        self.project_feature = nn.Linear(input_dim, hidden_dim, device=device, dtype=dtype)
-        self.word_embedding = WordEmbedding(vocab_size, wordvec_dim, device=device, dtype=dtype)
+        self.project_input = nn.Linear(input_dim, hidden_dim, device=device, dtype=dtype)
+        self.word_embed = WordEmbedding(vocab_size, wordvec_dim, device=device, dtype=dtype)
 
-        if self.cell_type == 'rnn':
+        if cell_type == 'rnn':
             self.network = RNN(wordvec_dim, hidden_dim, device=device, dtype=dtype)
 
-        self.project_output = nn.Linear(hidden_dim, vocab_size).to(device=device, dtype=dtype)
+        self.project_output = nn.Linear(hidden_dim, vocab_size, device=device, dtype=dtype)
 
     def forward(self, images, captions):
-        '''
-        :param images: Input images, of shape (N, 3, 112, 112)
-        :param captions:  (N, T)  N是批次大小表示有多少句子， T是每个句子长度
-        :return:
-        '''
-
+        """
+            forward可以看作是在训练集上训练，sample是在测试集上测试，这两个的 h 都要分情况讨论
+            :param images: Input images, of shape (N, 3, 112, 112)
+            :param captions:  (N, T)  N是批次大小表示有多少句子， T是每个句子长度
+            :return:
+        """
         # captions_in 和 captions_out 的形状都是 (N, T-1)
         # captions_in 告诉模型当前处理的单词是什么
         # captions_out 告诉模型下一个正确的单词是什么
         captions_in = captions[:, :-1]
         captions_out = captions[:, 1:]
 
-        loss = 0.0
-
-        word_vectors = self.word_embedding.forward(captions_in)
         image_features = self.feature_extractor.extract_mobilenet_feature(images)
-        if self.cell_type in ['rnn', 'lstm']:
-            h0 = self.project_feature(image_features)
-            hT = self.network.forward(word_vectors, h0)
+        x = self.word_embed.forward(captions_in)
 
-        scores = self.project_output(hT)
+        if self.cell_type == 'rnn':
+            h0 = self.project_input.forward(image_features)
+            hT = self.network.forward(x, h0)
+
+        scores = self.project_output.forward(hT)
         loss = temporal_softmax_loss(scores, captions_out, self.ignore_index)
 
         return loss
 
-    def sample(self, images, max_length=15):
+    def sample(self, images, max_length = 15):
+
         N = images.shape[0]
         # images.new() 创建了形状为(N, max_length) device和dtype都和images相同的张量，
         # 填充为1转为长整型乘以self._null -> <NULL>对应的索引全部初始化为<NULL>
-        captions = self._null * images.new(N, max_length).fill_(1).long()
-
-        image_features = self.feature_extract.extract_mobilenet_feature(images)
-        if self.cell_type == 'rnn':
-            h = self.project_input(image_features)
-
+        captions = images.new(N, max_length).fill_(1).long() * self._null
         # 初始化一个 [N, 1] 值全部为<START>索引的张量， 确保生成的描述从这个单词开始
-        words = self._start * images.new(N, 1).long()
+        words = images.new(N, 1).fill_(1).long() * self._start
+
+        image_features = self.feature_extractor.extract_mobilenet_feature(images)
+        if self.cell_type == 'rnn':
+            h = self.project_input.forward(image_features)
 
         for i in range(max_length):
             x = self.word_embed.forward(words).reshape(N, -1)
+
             if self.cell_type == 'rnn':
                 h = self.network.step_forward(x, h)
 
-            scores = self.project_output(h)
+            scores = self.project_output.forward(h)
             words = torch.argmax(scores, dim=1)
             # 在每个单个时间步里模型同时处理N张图片，对N张图片生成一个单词，所以用列表示单词
             captions[:, i] = words
