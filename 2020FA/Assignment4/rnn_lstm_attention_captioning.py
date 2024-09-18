@@ -331,8 +331,8 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b, attn=None, Wattn=None):
 
     return next_h, next_c
 
-def lstm_forward(x, h0, Wx, Wh, b):
 
+def lstm_forward(x, h0, Wx, Wh, b):
     N, T, D = x.shape
     N, H = h0.shape
 
@@ -345,7 +345,6 @@ def lstm_forward(x, h0, Wx, Wh, b):
     prev_c = c0
 
     for t in range(T):
-
         next_h, next_c = lstm_step_forward(x[:, t, :], prev_h, prev_c, Wx, Wh, b)
         h[:, t, :] = next_h
         prev_h = next_h
@@ -353,8 +352,9 @@ def lstm_forward(x, h0, Wx, Wh, b):
 
     return h
 
+
 class LSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, device = 'cpu', dtype = torch.float32):
+    def __init__(self, input_size, hidden_size, device='cpu', dtype=torch.float32):
         """
         Initialize a LSTM.
         Model parameters to initialize:
@@ -363,8 +363,10 @@ class LSTM(nn.Module):
         - b: Biases, of shape (4H,)
         """
         super().__init__()
-        self.Wx = Parameter(torch.randn((input_size, hidden_size * 4), dtype=dtype, device=device).div(math.sqrt(input_size)))
-        self.Wh = Parameter(torch.randn((hidden_size, hidden_size * 4), dtype=dtype, device=device).div(math.sqrt(hidden_size)))
+        self.Wx = Parameter(
+            torch.randn((input_size, hidden_size * 4), dtype=dtype, device=device).div(math.sqrt(input_size)))
+        self.Wh = Parameter(
+            torch.randn((hidden_size, hidden_size * 4), dtype=dtype, device=device).div(math.sqrt(hidden_size)))
         self.b = Parameter(torch.zeros(hidden_size * 4, dtype=dtype, device=device))
 
     def forward(self, x, h0):
@@ -375,6 +377,30 @@ class LSTM(nn.Module):
         next_h, next_c = lstm_step_forward(x, prev_h, prev_c, self.Wx, self.Wh, self.b)
         return next_h, next_c
 
+
 #######################################################################################################
 # Attention LSTM                                                                                      #
 #######################################################################################################
+
+def dot_product_attention(prev_h, A):
+    """
+    :param prev_h: LSTM在上一个时间步的隐藏状态，代表模型当前"记住的信息" (N, H)
+    :param A: 来自CNN的特征激活 此 project 中 shape是(N, H, 4, 4)
+    :return:
+    """
+    # (N, 1280, 4, 4)
+    N, H, D_a, _ = A.shape
+
+    A_flatten = A.reshape(N, H, -1)
+    prev_h = prev_h.reshape(N, 1, H)
+    # attn_scores shape 为(N, 1, 16)
+    attn_scores = torch.bmm(prev_h, A_flatten) / (H ** 0.5)
+    # attn_weights shape 为(N, 1, 16)
+    attn_weights = F.softmax(attn_scores, dim=2)
+    # attn shape 为 (N, H, 1)
+    attn = torch.bmm(A_flatten, attn_weights.reshape(N, D_a ** 2, 1))
+    # 调整形状
+    attn_weights = attn_weights.reshape(N, D_a, D_a)
+    attn = attn.reshape(N, H)
+
+    return attn, attn_weights
