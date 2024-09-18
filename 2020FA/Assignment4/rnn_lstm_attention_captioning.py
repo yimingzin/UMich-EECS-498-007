@@ -197,8 +197,8 @@ class CaptioningRNN(nn.Module):
 
         # 取出 <NULL> <START> <END> 对应的索引
         self._null = word_to_idx['<NULL>']
-        self._start = word_to_idx['<START>']
-        self._end = word_to_idx['<END>']
+        self._start = word_to_idx.get('<START>', None)
+        self._end = word_to_idx.get('<END>', None)
         self.ignore_index = ignore_index
 
         if cell_type in ['rnn', 'lstm']:
@@ -211,6 +211,10 @@ class CaptioningRNN(nn.Module):
 
         if cell_type == 'rnn':
             self.network = RNN(wordvec_dim, hidden_dim, device=device, dtype=dtype)
+
+        # add LSTM
+        elif cell_type == 'lstm':
+            self.network = LSTM(wordvec_dim, hidden_dim, device=device, dtype=dtype)
 
         self.project_output = nn.Linear(hidden_dim, vocab_size, device=device, dtype=dtype)
 
@@ -234,6 +238,11 @@ class CaptioningRNN(nn.Module):
             h0 = self.project_input.forward(image_features)
             hT = self.network.forward(x, h0)
 
+        # add LSTM (same as 'rnn')
+        elif self.cell_type == 'lstm':
+            h0 = self.project_input.forward(image_features)
+            hT = self.network.forward(x, h0)
+
         scores = self.project_output.forward(hT)
         loss = temporal_softmax_loss(scores, captions_out, self.ignore_index)
 
@@ -251,12 +260,19 @@ class CaptioningRNN(nn.Module):
         image_features = self.feature_extractor.extract_mobilenet_feature(images)
         if self.cell_type == 'rnn':
             h = self.project_input.forward(image_features)
+        # add LSTM
+        elif self.cell_type == 'lstm':
+            h = self.project_input.forward(image_features)
+            c = torch.zeros_like(h)
 
         for i in range(max_length):
             x = self.word_embed.forward(words).reshape(N, -1)
 
             if self.cell_type == 'rnn':
                 h = self.network.step_forward(x, h)
+            # add LSTM
+            elif self.cell_type == 'lstm':
+                h, c = self.network.step_forward(x, h, c)
 
             scores = self.project_output.forward(h)
             words = torch.argmax(scores, dim=1)
@@ -336,3 +352,29 @@ def lstm_forward(x, h0, Wx, Wh, b):
         prev_c = next_c
 
     return h
+
+class LSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, device = 'cpu', dtype = torch.float32):
+        """
+        Initialize a LSTM.
+        Model parameters to initialize:
+        - Wx: Weights for input-to-hidden connections, of shape (D, 4H)
+        - Wh: Weights for hidden-to-hidden connections, of shape (H, 4H)
+        - b: Biases, of shape (4H,)
+        """
+        super().__init__()
+        self.Wx = Parameter(torch.randn((input_size, hidden_size * 4), dtype=dtype, device=device).div(math.sqrt(input_size)))
+        self.Wh = Parameter(torch.randn((hidden_size, hidden_size * 4), dtype=dtype, device=device).div(math.sqrt(hidden_size)))
+        self.b = Parameter(torch.zeros(hidden_size * 4, dtype=dtype, device=device))
+
+    def forward(self, x, h0):
+        hn = lstm_forward(x, h0, self.Wx, self.Wh, self.b)
+        return hn
+
+    def step_forward(self, x, prev_h, prev_c):
+        next_h, next_c = lstm_step_forward(x, prev_h, prev_c, self.Wx, self.Wh, self.b)
+        return next_h, next_c
+
+#######################################################################################################
+# Attention LSTM                                                                                      #
+#######################################################################################################
