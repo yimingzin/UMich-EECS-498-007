@@ -315,46 +315,46 @@ UNK_index = data_dict['vocab']['token_to_idx']['<UNK>']
 # print('expected loss: ', expected_loss)
 # print('difference: ', rel_error(torch.tensor(loss), torch.tensor(expected_loss)))
 # ----------------------------------------------------------------------------------------------------
-def captioning_train(rnn_model, image_data, caption_data, lr_decay=1, **kwargs):
-  """
-  Run optimization to train the model.
-  """
-  # optimizer setup
-  from torch import optim
-  optimizer = optim.Adam(
-    filter(lambda p: p.requires_grad, rnn_model.parameters()),
-    learning_rate) # leave betas and eps by default
-  lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer,
-                                             lambda epoch: lr_decay ** epoch)
-
-  # sample minibatch data
-  iter_per_epoch = math.ceil(image_data.shape[0] // batch_size)
-  loss_history = []
-  rnn_model.train()
-  for i in range(num_epochs):
-    start_t = time.time()
-    for j in range(iter_per_epoch):
-      images, captions = image_data[j*batch_size:(j+1)*batch_size], \
-                           caption_data[j*batch_size:(j+1)*batch_size]
-
-      loss = rnn_model(images, captions)
-      optimizer.zero_grad()
-      loss.backward()
-      loss_history.append(loss.item())
-      optimizer.step()
-    end_t = time.time()
-    print('(Epoch {} / {}) loss: {:.4f} time per epoch: {:.1f}s'.format(
-        i, num_epochs, loss.item(), end_t-start_t))
-
-    lr_scheduler.step()
-
-  # plot the training losses
-  plt.plot(loss_history)
-  plt.xlabel('Iteration')
-  plt.ylabel('Loss')
-  plt.title('Training loss history')
-  plt.show()
-  return rnn_model, loss_history
+# def captioning_train(rnn_model, image_data, caption_data, lr_decay=1, **kwargs):
+#   """
+#   Run optimization to train the model.
+#   """
+#   # optimizer setup
+#   from torch import optim
+#   optimizer = optim.Adam(
+#     filter(lambda p: p.requires_grad, rnn_model.parameters()),
+#     learning_rate) # leave betas and eps by default
+#   lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer,
+#                                              lambda epoch: lr_decay ** epoch)
+#
+#   # sample minibatch data
+#   iter_per_epoch = math.ceil(image_data.shape[0] // batch_size)
+#   loss_history = []
+#   rnn_model.train()
+#   for i in range(num_epochs):
+#     start_t = time.time()
+#     for j in range(iter_per_epoch):
+#       images, captions = image_data[j*batch_size:(j+1)*batch_size], \
+#                            caption_data[j*batch_size:(j+1)*batch_size]
+#
+#       loss = rnn_model(images, captions)
+#       optimizer.zero_grad()
+#       loss.backward()
+#       loss_history.append(loss.item())
+#       optimizer.step()
+#     end_t = time.time()
+#     print('(Epoch {} / {}) loss: {:.4f} time per epoch: {:.1f}s'.format(
+#         i, num_epochs, loss.item(), end_t-start_t))
+#
+#     lr_scheduler.step()
+#
+#   # plot the training losses
+#   plt.plot(loss_history)
+#   plt.xlabel('Iteration')
+#   plt.ylabel('Loss')
+#   plt.title('Training loss history')
+#   plt.show()
+#   return rnn_model, loss_history
 
 # ----------------------------------------------------------------------------------------------------
 
@@ -386,52 +386,95 @@ def captioning_train(rnn_model, image_data, caption_data, lr_decay=1, **kwargs):
 #                 num_epochs=num_epochs, batch_size=batch_size,
 #                 learning_rate=learning_rate)
 # ----------------------------------------------------------------------------------------------------
-reset_seed(0)
-
-# data input
-small_num_train = num_train
-sample_idx = torch.randint(num_train, size=(small_num_train,), **to_long_cuda).to('cpu')
-small_image_data = data_dict['train_images'][sample_idx].to('cuda')
-small_caption_data = data_dict['train_captions'][sample_idx].to('cuda')
-
-# optimization arguments
-num_epochs = 60
-batch_size = 250
-
-# create the image captioning model
-rnn_model = CaptioningRNN(
-          cell_type='rnn',
-          word_to_idx=data_dict['vocab']['token_to_idx'],
-          input_dim=1280, # hard-coded, do not modify
-          hidden_dim=512,
-          wordvec_dim=256,
-          ignore_index=NULL_index,
-          **to_float_cuda)
-
-for learning_rate in [1e-3]:
-  print('learning rate is: ', learning_rate)
-  rnn_model_submit, rnn_loss_submit = captioning_train(rnn_model, small_image_data, small_caption_data,
-                num_epochs=num_epochs, batch_size=batch_size,
-                learning_rate=learning_rate)
+# reset_seed(0)
+#
+# # data input
+# small_num_train = num_train
+# sample_idx = torch.randint(num_train, size=(small_num_train,), **to_long_cuda).to('cpu')
+# small_image_data = data_dict['train_images'][sample_idx].to('cuda')
+# small_caption_data = data_dict['train_captions'][sample_idx].to('cuda')
+#
+# # optimization arguments
+# num_epochs = 60
+# batch_size = 250
+#
+# # create the image captioning model
+# rnn_model = CaptioningRNN(
+#           cell_type='rnn',
+#           word_to_idx=data_dict['vocab']['token_to_idx'],
+#           input_dim=1280, # hard-coded, do not modify
+#           hidden_dim=512,
+#           wordvec_dim=256,
+#           ignore_index=NULL_index,
+#           **to_float_cuda)
+#
+# for learning_rate in [1e-3]:
+#   print('learning rate is: ', learning_rate)
+#   rnn_model_submit, rnn_loss_submit = captioning_train(rnn_model, small_image_data, small_caption_data,
+#                 num_epochs=num_epochs, batch_size=batch_size,
+#                 learning_rate=learning_rate)
 
 # ----------------------------------------------------------------------------------------------------
-# Sample a minibatch and show the reshaped 112x112 images,
-# GT captions, and generated captions by your model.
-batch_size = 3
+# # Sample a minibatch and show the reshaped 112x112 images,
+# # GT captions, and generated captions by your model.
+# batch_size = 3
+#
+# for split in ['train', 'val']:
+#   sample_idx = torch.randint(0, num_train if split=='train' else num_val, (batch_size,))
+#   sample_images = data_dict[split+'_images'][sample_idx]
+#   sample_captions = data_dict[split+'_captions'][sample_idx]
+#
+#   # decode_captions is loaded from a4_helper.py
+#   gt_captions = decode_captions(sample_captions, data_dict['vocab']['idx_to_token'])
+#   rnn_model.eval()
+#   generated_captions = rnn_model.sample(sample_images)
+#   generated_captions = decode_captions(generated_captions, data_dict['vocab']['idx_to_token'])
+#
+#   for i in range(batch_size):
+#     plt.imshow(sample_images[i].permute(1, 2, 0))
+#     plt.axis('off')
+#     plt.title('%s\nRNN Generated:%s\nGT:%s' % (split, generated_captions[i], gt_captions[i]))
+#     plt.show()
+# ----------------------------------------------------------------------------------------------------
+# N, D, H = 3, 4, 5
+# x = torch.linspace(-0.4, 1.2, steps=N*D, **to_double_cuda).reshape(N, D)
+# prev_h = torch.linspace(-0.3, 0.7, steps=N*H, **to_double_cuda).reshape(N, H)
+# prev_c = torch.linspace(-0.4, 0.9, steps=N*H, **to_double_cuda).reshape(N, H)
+# Wx = torch.linspace(-2.1, 1.3, steps=4*D*H, **to_double_cuda).reshape(D, 4 * H)
+# Wh = torch.linspace(-0.7, 2.2, steps=4*H*H, **to_double_cuda).reshape(H, 4 * H)
+# b = torch.linspace(0.3, 0.7, steps=4*H, **to_double_cuda)
+#
+# # YOUR_TURN: Impelement lstm_step_forward
+# next_h, next_c = lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b)
+#
+# expected_next_h = torch.tensor([
+#     [ 0.24635157,  0.28610883,  0.32240467,  0.35525807,  0.38474904],
+#     [ 0.49223563,  0.55611431,  0.61507696,  0.66844003,  0.7159181 ],
+#     [ 0.56735664,  0.66310127,  0.74419266,  0.80889665,  0.858299  ]], **to_double_cuda)
+# expected_next_c = torch.tensor([
+#     [ 0.32986176,  0.39145139,  0.451556,    0.51014116,  0.56717407],
+#     [ 0.66382255,  0.76674007,  0.87195994,  0.97902709,  1.08751345],
+#     [ 0.74192008,  0.90592151,  1.07717006,  1.25120233,  1.42395676]], **to_double_cuda)
+#
+# print('next_h error: ', rel_error(expected_next_h, next_h))
+# print('next_c error: ', rel_error(expected_next_c, next_c))
+# ----------------------------------------------------------------------------------------------------
+N, D, H, T = 2, 5, 4, 3
+x = torch.linspace(-0.4, 0.6, steps=N*T*D, **to_double_cuda).reshape(N, T, D)
+h0 = torch.linspace(-0.4, 0.8, steps=N*H, **to_double_cuda).reshape(N, H)
+Wx = torch.linspace(-0.2, 0.9, steps=4*D*H, **to_double_cuda).reshape(D, 4 * H)
+Wh = torch.linspace(-0.3, 0.6, steps=4*H*H, **to_double_cuda).reshape(H, 4 * H)
+b = torch.linspace(0.2, 0.7, steps=4*H, **to_double_cuda)
 
-for split in ['train', 'val']:
-  sample_idx = torch.randint(0, num_train if split=='train' else num_val, (batch_size,))
-  sample_images = data_dict[split+'_images'][sample_idx]
-  sample_captions = data_dict[split+'_captions'][sample_idx]
+# YOUR_TURN: Impelement lstm_forward
+h = lstm_forward(x, h0, Wx, Wh, b)
 
-  # decode_captions is loaded from a4_helper.py
-  gt_captions = decode_captions(sample_captions, data_dict['vocab']['idx_to_token'])
-  rnn_model.eval()
-  generated_captions = rnn_model.sample(sample_images)
-  generated_captions = decode_captions(generated_captions, data_dict['vocab']['idx_to_token'])
+expected_h = torch.tensor([
+ [[ 0.01764008,  0.01823233,  0.01882671,  0.0194232 ],
+  [ 0.11287491,  0.12146228,  0.13018446,  0.13902939],
+  [ 0.31358768,  0.33338627,  0.35304453,  0.37250975]],
+ [[ 0.45767879,  0.4761092,   0.4936887,   0.51041945],
+  [ 0.6704845,   0.69350089,  0.71486014,  0.7346449 ],
+  [ 0.81733511,  0.83677871,  0.85403753,  0.86935314]]], **to_double_cuda)
 
-  for i in range(batch_size):
-    plt.imshow(sample_images[i].permute(1, 2, 0))
-    plt.axis('off')
-    plt.title('%s\nRNN Generated:%s\nGT:%s' % (split, generated_captions[i], gt_captions[i]))
-    plt.show()
+print('h error: ', rel_error(expected_h, h))

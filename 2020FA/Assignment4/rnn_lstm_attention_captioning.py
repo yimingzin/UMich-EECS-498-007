@@ -138,10 +138,12 @@ class RNN(nn.Module):
         next_h, _ = rnn_step_forward(x, prev_h, self.Wx, self.Wh, self.b)
         return next_h
 
+
 class WordEmbedding(nn.Module):
     def __init__(self, vocab_size, embed_size, device='cpu', dtype=torch.float32):
         super().__init__()
-        self.W_embed = Parameter(torch.randn((vocab_size, embed_size), dtype=dtype, device=device).div(math.sqrt(vocab_size)))
+        self.W_embed = Parameter(
+            torch.randn((vocab_size, embed_size), dtype=dtype, device=device).div(math.sqrt(vocab_size)))
 
         # 把x从离散的单词索引转换为连续的向量表示
         # x.shape = (N, T) N是句子的数量，T是每个句子的单词数量
@@ -151,27 +153,29 @@ class WordEmbedding(nn.Module):
             [7, 20, 15, 12, 8]   # 第二个句子：'the next two men in'
         ]
         '''
+
     def forward(self, x):
         out = self.W_embed[x]
         return out
 
-def temporal_softmax_loss(x, y, ignore_index = None):
 
+def temporal_softmax_loss(x, y, ignore_index=None):
     N, T, V = x.shape
     N, T = y.shape
 
-    x_flat = x.reshape(N*T, V)
-    y_flat = y.reshape(N*T)
+    x_flat = x.reshape(N * T, V)
+    y_flat = y.reshape(N * T)
 
     loss = F.cross_entropy(x_flat, y_flat, ignore_index=ignore_index, reduction='sum')
     loss /= N
 
     return loss
 
+
 class CaptioningRNN(nn.Module):
-    def __init__(self, word_to_idx, input_dim = 512, wordvec_dim = 128,
-                 hidden_dim = 128, cell_type = 'rnn', device = 'cpu',
-                 ignore_index = None, dtype = torch.float32):
+    def __init__(self, word_to_idx, input_dim=512, wordvec_dim=128,
+                 hidden_dim=128, cell_type='rnn', device='cpu',
+                 ignore_index=None, dtype=torch.float32):
         """
             :param word_to_idx: 数据集: 字典 {word : index}
             :param input_dim: 如果为 rnn / lstm = 1280 else = 1280 * 4 * 4
@@ -187,7 +191,7 @@ class CaptioningRNN(nn.Module):
         self.cell_type = cell_type
         self.word_to_idx = word_to_idx
         # 生成一个索引对应单词的字典
-        self.idx_to_word = {i : w for w, i in word_to_idx.items()}
+        self.idx_to_word = {i: w for w, i in word_to_idx.items()}
 
         vocab_size = len(word_to_idx)
 
@@ -235,7 +239,7 @@ class CaptioningRNN(nn.Module):
 
         return loss
 
-    def sample(self, images, max_length = 15):
+    def sample(self, images, max_length=15):
 
         N = images.shape[0]
         # images.new() 创建了形状为(N, max_length) device和dtype都和images相同的张量，
@@ -261,11 +265,12 @@ class CaptioningRNN(nn.Module):
 
         return captions
 
+
 #######################################################################################################
 # LSTM                                                                                                #
 #######################################################################################################
 
-def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b, attn = None, Wattn = None):
+def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b, attn=None, Wattn=None):
     """
         前向传播LSTM的单个时间步。
         输入数据的维度为 D，隐藏状态的维度为 H，使用的小批量大小为 N。
@@ -291,18 +296,43 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b, attn = None, Wattn = None):
     else:
         a = torch.mm(x, Wx) + torch.mm(prev_h, Wh) + torch.mm(attn, Wattn) + b
 
-    # input/forget/output/grid
-    ai = a[:, :H]
-    af = a[:, H:2*H]
-    ao = a[:, 2*H:3*H]
-    ag = a[:, 3*H:]
+    # 输入门
+    i = torch.sigmoid(a[:, :H])
+    # 遗忘门
+    f = torch.sigmoid(a[:, H:2 * H])
+    # 输出门
+    o = torch.sigmoid(a[:, 2 * H:3 * H])
+    # 候选单元状态
+    g = torch.tanh(a[:, 3 * H:])
 
-    i = torch.sigmoid(ai)
-    f = torch.sigmoid(af)
-    o = torch.sigmoid(ao)
-    g = torch.tanh(ag)
-
+    # 单元状态c可以被看作是lstm的长期记忆，通过遗忘门f(sigmoid输出范围在0-1)控制前一时间步的单元状态prev_c中哪些部分应该被遗忘
+    # 加上通过输入门i(sigmoid输出范围在0-1)控制当前时间步的新信息g应该有多少被添加到单元状态中
     next_c = f * prev_c + i * g
+
+    # 隐藏状态h是LSTM的短期记忆，用来决定当前时间步的输出并传递给下一个时间步。
+    # 通过输出门o决定哪些部分应该被输出为隐藏状态，将单元状态next_c通过tanh激活函数压缩值域到[-1, 1]
     next_h = o * torch.tanh(next_c)
 
     return next_h, next_c
+
+def lstm_forward(x, h0, Wx, Wh, b):
+
+    N, T, D = x.shape
+    N, H = h0.shape
+
+    # 单元状态 c 是LSTM的内部状态，用于在不同时间步之间传递和存储长期记忆，不直接用于下游任务
+    # 主要用于在LSTM内部计算隐藏状态h, 通常不保存整个时间序列的状态。
+    c0 = torch.zeros_like(h0)
+    h = torch.zeros((N, T, H), dtype=h0.dtype, device=h0.device)
+
+    prev_h = h0
+    prev_c = c0
+
+    for t in range(T):
+
+        next_h, next_c = lstm_step_forward(x[:, t, :], prev_h, prev_c, Wx, Wh, b)
+        h[:, t, :] = next_h
+        prev_h = next_h
+        prev_c = next_c
+
+    return h
