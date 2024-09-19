@@ -211,10 +211,12 @@ class CaptioningRNN(nn.Module):
 
         if cell_type == 'rnn':
             self.network = RNN(wordvec_dim, hidden_dim, device=device, dtype=dtype)
-
         # add LSTM
         elif cell_type == 'lstm':
             self.network = LSTM(wordvec_dim, hidden_dim, device=device, dtype=dtype)
+        # add LSTM Attention
+        elif cell_type == 'attention':
+            self.network = AttentionLSTM(wordvec_dim, hidden_dim, device=device, dtype=dtype)
 
         self.project_output = nn.Linear(hidden_dim, vocab_size, device=device, dtype=dtype)
 
@@ -242,6 +244,10 @@ class CaptioningRNN(nn.Module):
         elif self.cell_type == 'lstm':
             h0 = self.project_input.forward(image_features)
             hT = self.network.forward(x, h0)
+        # add LSTM Attention
+        elif self.cell_type == 'attention':
+            A = self.project_input.forward(image_features.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+            hT = self.network.forward(x, A)
 
         scores = self.project_output.forward(hT)
         loss = temporal_softmax_loss(scores, captions_out, self.ignore_index)
@@ -257,6 +263,9 @@ class CaptioningRNN(nn.Module):
         # 初始化一个 [N, 1] 值全部为<START>索引的张量， 确保生成的描述从这个单词开始
         words = images.new(N, 1).fill_(1).long() * self._start
 
+        if self.cell_type == 'attention':
+            attn_weights_all = images.new(N, max_length, 4, 4).fill_(1).float()
+
         image_features = self.feature_extractor.extract_mobilenet_feature(images)
         if self.cell_type == 'rnn':
             h = self.project_input.forward(image_features)
@@ -264,6 +273,11 @@ class CaptioningRNN(nn.Module):
         elif self.cell_type == 'lstm':
             h = self.project_input.forward(image_features)
             c = torch.zeros_like(h)
+        # add Attention
+        elif self.cell_type == 'attention':
+            A = self.project_input.forward(image_features.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+            h = A.mean(dim=(2, 3))
+            c = A.mean(dim=(2, 3))
 
         for i in range(max_length):
             x = self.word_embed.forward(words).reshape(N, -1)
@@ -273,13 +287,20 @@ class CaptioningRNN(nn.Module):
             # add LSTM
             elif self.cell_type == 'lstm':
                 h, c = self.network.step_forward(x, h, c)
+            # add Attention
+            elif self.cell_type == 'attention':
+                attn, attn_weights_all[:, i, :, :] = dot_product_attention(h, A)
+                h, c = self.network.step_forward(x, h, c, attn)
 
             scores = self.project_output.forward(h)
             words = torch.argmax(scores, dim=1)
             # 在每个单个时间步里模型同时处理N张图片，对N张图片生成一个单词，所以用列表示单词
             captions[:, i] = words
 
-        return captions
+        if self.cell_type == 'attention':
+            return captions, attn_weights_all.cpu()
+        else:
+            return captions
 
 
 #######################################################################################################
@@ -391,16 +412,102 @@ def dot_product_attention(prev_h, A):
     # (N, 1280, 4, 4)
     N, H, D_a, _ = A.shape
 
+    # A_flatten.shape = (N, 1280(H), 16)
     A_flatten = A.reshape(N, H, -1)
-    prev_h = prev_h.reshape(N, 1, H)
-    # attn_scores shape 为(N, 1, 16)
+    # prev_h.shape = (N, 1, 1280(H))
+    prev_h = prev_h.reshape(N, H, 1).permute(0, 2, 1)
+
     attn_scores = torch.bmm(prev_h, A_flatten) / (H ** 0.5)
-    # attn_weights shape 为(N, 1, 16)
+    # attn_weights.shape = (N, 1, 16)
     attn_weights = F.softmax(attn_scores, dim=2)
-    # attn shape 为 (N, H, 1)
+    # attn.shape = (N, 1280(H), 1)
     attn = torch.bmm(A_flatten, attn_weights.reshape(N, D_a ** 2, 1))
+
     # 调整形状
-    attn_weights = attn_weights.reshape(N, D_a, D_a)
     attn = attn.reshape(N, H)
+    attn_weights = attn_weights.reshape(N, D_a, D_a)
 
     return attn, attn_weights
+
+
+def attention_forward(x, A, Wx, Wh, Wattn, b):
+
+    N, T, D = x.shape
+    H = A.shape[1]
+
+    h0 = torch.mean(A, dim=(2, 3))
+    c0 = h0
+
+    h = torch.zeros((N, T, H), dtype=x.dtype, device=x.device)
+
+    prev_h = h0
+    prev_c = c0
+
+    for t in range(T):
+        attn, attn_weights = dot_product_attention(prev_h, A)
+        next_h, next_c = lstm_step_forward(x[:, t, :], prev_h, prev_c, Wx, Wh, b, attn, Wattn)
+        h[:, t, :] = next_h
+        prev_h = next_h
+        prev_c = next_c
+
+    return h
+
+
+class AttentionLSTM(nn.Module):
+    """
+    This is our single-layer, uni-directional Attention module.
+
+    Arguments for initialization:
+    - input_size: Input size, denoted as D before
+    - hidden_size: Hidden size, denoted as H before
+    """
+
+    def __init__(self, input_size, hidden_size, device='cpu',
+                 dtype=torch.float32):
+        """
+        Initialize a LSTM.
+        Model parameters to initialize:
+        - Wx: Weights for input-to-hidden connections, of shape (D, 4H)
+        - Wh: Weights for hidden-to-hidden connections, of shape (H, 4H)
+        - Wattn: Weights for attention-to-hidden connections, of shape (H, 4H)
+        - b: Biases, of shape (4H,)
+        """
+        super().__init__()
+
+        # Register parameters
+        self.Wx = Parameter(torch.randn(input_size, hidden_size * 4,
+                                        device=device, dtype=dtype).div(math.sqrt(input_size)))
+        self.Wh = Parameter(torch.randn(hidden_size, hidden_size * 4,
+                                        device=device, dtype=dtype).div(math.sqrt(hidden_size)))
+        self.Wattn = Parameter(torch.randn(hidden_size, hidden_size * 4,
+                                           device=device, dtype=dtype).div(math.sqrt(hidden_size)))
+        self.b = Parameter(torch.zeros(hidden_size * 4,
+                                       device=device, dtype=dtype))
+
+    def forward(self, x, A):
+        """
+        Inputs:
+        - x: Input data for the entire timeseries, of shape (N, T, D)
+        - A: The projected CNN feature activation, of shape (N, H, 4, 4)
+
+        Outputs:
+        - hn: The hidden state output
+        """
+        hn = attention_forward(x, A, self.Wx, self.Wh, self.Wattn, self.b)
+        return hn
+
+    def step_forward(self, x, prev_h, prev_c, attn):
+        """
+        Inputs:
+        - x: Input data for one time step, of shape (N, D)
+        - prev_h: The previous hidden state, of shape (N, H)
+        - prev_c: The previous cell state, of shape (N, H)
+        - attn: The attention embedding, of shape (N, H)
+
+        Outputs:
+        - next_h: The next hidden state, of shape (N, H)
+        - next_c: The next cell state, of shape (N, H)
+        """
+        next_h, next_c = lstm_step_forward(x, prev_h, prev_c, self.Wx, self.Wh,
+                                           self.b, attn=attn, Wattn=self.Wattn)
+        return next_h, next_c
