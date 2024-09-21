@@ -645,22 +645,29 @@ def captioning_train(rnn_model, image_data, caption_data, lr_decay=1, **kwargs):
 # print('next_h error: ', rel_error(expected_next_h, next_h))
 # print('next_c error: ', rel_error(expected_next_c, next_c))
 # ----------------------------------------------------------------------------------------------------
-# N, D, H = 3, 10, 4
+# N, D, H, T = 2, 5, 4, 3
+# D_a = 4
 #
-# x = torch.linspace(-0.4, 0.7, steps=N*D, **to_double_cuda).reshape(N, D)
-# prev_h = torch.linspace(-0.2, 0.5, steps=N*H, **to_double_cuda).reshape(N, H)
-# Wx = torch.linspace(-0.1, 0.9, steps=D*H, **to_double_cuda).reshape(D, H)
-# Wh = torch.linspace(-0.3, 0.7, steps=H*H, **to_double_cuda).reshape(H, H)
-# b = torch.linspace(-0.2, 0.4, steps=H, **to_double_cuda)
+# x = torch.linspace(-0.4, 0.6, steps=N*T*D, **to_double_cuda).reshape(N, T, D)
+# A = torch.linspace(-0.4, 1.8, steps=N*H*D_a*D_a, **to_double_cuda).reshape(N, H, D_a, D_a)
+# Wx = torch.linspace(-0.2, 0.9, steps=4*D*H, **to_double_cuda).reshape(D, 4 * H)
+# Wh = torch.linspace(-0.3, 0.6, steps=4*H*H, **to_double_cuda).reshape(H, 4 * H)
+# Wattn = torch.linspace(1.3, 4.2, steps=4*H*H, **to_double_cuda).reshape(H, 4 * H)
+# b = torch.linspace(0.2, 0.7, steps=4*H, **to_double_cuda)
 #
-# # YOUR_TURN: Impelement rnn_step_forward
-# next_h, _ = rnn_step_forward(x, prev_h, Wx, Wh, b)
-# expected_next_h = torch.tensor([
-#   [-0.58172089, -0.50182032, -0.41232771, -0.31410098],
-#   [ 0.66854692,  0.79562378,  0.87755553,  0.92795967],
-#   [ 0.97934501,  0.99144213,  0.99646691,  0.99854353]], **to_double_cuda)
+# # YOUR_TURN: Impelement attention_forward
+# h = attention_forward(x, A, Wx, Wh, Wattn, b)
 #
-# print('next_h error: ', rel_error(expected_next_h, next_h))
+# expected_h = torch.tensor([
+#         [[0.56141729, 0.70274849, 0.80000386, 0.86349400],
+#          [0.89556391, 0.92856726, 0.94950579, 0.96281018],
+#          [0.96792077, 0.97535465, 0.98039623, 0.98392994]],
+#
+#         [[0.95065880, 0.97135490, 0.98344373, 0.99045552],
+#          [0.99317679, 0.99607466, 0.99774317, 0.99870293],
+#          [0.99907382, 0.99946784, 0.99969426, 0.99982435]]], **to_double_cuda)
+#
+# print('h error: ', rel_error(expected_h, h))
 # ----------------------------------------------------------------------------------------------------
 # reset_seed(0)
 #
