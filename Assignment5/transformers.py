@@ -127,13 +127,20 @@ class SelfAttention(nn.Module):
         by [-c, c]                                                             
         where c = sqrt(6/(D_in + D_out)) 
         """
-        # initialize weights
-        c1 = math.sqrt(6 / (dim_in + dim_q))
-        c2 = math.sqrt(6 / (dim_in + dim_v))
 
-        nn.init.uniform_(self.q.weight, a=-c1, b=c1)
-        nn.init.uniform_(self.k.weight, a=-c1, b=c1)
-        nn.init.uniform_(self.v.weight, a=-c2, b=c2)
+        # initialize weights
+        for layer in [self.q, self.k, self.v]:
+            D_in, D_out = layer.weight.shape
+            c = math.sqrt(6 / (D_in + D_out))
+            nn.init.uniform_(layer.weight, a=-c, b=c)
+        '''
+            c1 = math.sqrt(6 / (dim_in + dim_q))
+            c2 = math.sqrt(6 / (dim_in + dim_v))
+
+            nn.init.uniform_(self.q.weight, a=-c1, b=c1)
+            nn.init.uniform_(self.k.weight, a=-c1, b=c1)
+            nn.init.uniform_(self.v.weight, a=-c2, b=c2)
+        '''
 
     def forward(
             self, query: Tensor, key: Tensor, value: Tensor, mask: Tensor = None
