@@ -260,70 +260,95 @@ vocab = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] + SPECIAL_TOKENS
 # execution_time = timeit.timeit(test_function, number=5)
 # print(f"Average Execution Time over 5 runs: {execution_time / 5} seconds")
 # ---------------------------------------------------------------------------------------------------------
-reset_seed(0)
-N = 2
-K = 4
-M = emb_size = 4
-dim_q = dim_k = 4
-atten_single = SelfAttention(emb_size, dim_q, dim_k)
-
-for k, v in atten_single.named_parameters():
-    # print(k, v.shape) # uncomment this to see the weight shape
-    v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
-
-query = torch.linspace(-0.4, 0.6, steps=N * K * M, requires_grad=True).reshape(
-    N, K, M
-)  # **to_double_cuda
-key = torch.linspace(-0.8, 0.5, steps=N * K * M, requires_grad=True).reshape(
-    N, K, M
-)  # **to_double_cuda
-value = torch.linspace(-0.3, 0.8, steps=N * K * M, requires_grad=True).reshape(
-    N, K, M
-)  # *to_double_cuda
-
-query.retain_grad()
-key.retain_grad()
-value.retain_grad()
-
-y_expected = torch.tensor(
-    [
-        [
-            [-1.10382, -0.37219, 0.35944, 1.09108],
-            [-1.45792, -0.50067, 0.45658, 1.41384],
-            [-1.74349, -0.60428, 0.53493, 1.67414],
-            [-1.92584, -0.67044, 0.58495, 1.84035],
-        ],
-        [
-            [-4.59671, -1.63952, 1.31767, 4.27486],
-            [-4.65586, -1.66098, 1.33390, 4.32877],
-            [-4.69005, -1.67339, 1.34328, 4.35994],
-            [-4.71039, -1.68077, 1.34886, 4.37848],
-        ],
-    ]
-)
-
-dy_expected = torch.tensor(
-    [
-        [
-            [-0.09084, -0.08961, -0.08838, -0.08715],
-            [0.69305, 0.68366, 0.67426, 0.66487],
-            [-0.88989, -0.87783, -0.86576, -0.85370],
-            [0.25859, 0.25509, 0.25158, 0.24808],
-        ],
-        [
-            [-0.05360, -0.05287, -0.05214, -0.05142],
-            [0.11627, 0.11470, 0.11312, 0.11154],
-            [-0.01048, -0.01034, -0.01019, -0.01005],
-            [-0.03908, -0.03855, -0.03802, -0.03749],
-        ],
-    ]
-)
-
-y = atten_single(query, key, value)
-dy = torch.randn(*y.shape)  # , **to_double_cuda
-
-y.backward(dy)
-query_grad = query.grad
-
-print("SelfAttention error: ", rel_error(y_expected, y))
-print("SelfAttention error: ", rel_error(dy_expected, query_grad))
+# reset_seed(0)
+# N = 2
+# K = 4
+# M = emb_size = 4
+# dim_q = dim_k = 4
+# atten_single = SelfAttention(emb_size, dim_q, dim_k)
+#
+# for k, v in atten_single.named_parameters():
+#     # print(k, v.shape) # uncomment this to see the weight shape
+#     v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
+#
+# query = torch.linspace(-0.4, 0.6, steps=N * K * M, requires_grad=True).reshape(
+#     N, K, M
+# )  # **to_double_cuda
+# key = torch.linspace(-0.8, 0.5, steps=N * K * M, requires_grad=True).reshape(
+#     N, K, M
+# )  # **to_double_cuda
+# value = torch.linspace(-0.3, 0.8, steps=N * K * M, requires_grad=True).reshape(
+#     N, K, M
+# )  # *to_double_cuda
+#
+# query.retain_grad()
+# key.retain_grad()
+# value.retain_grad()
+#
+# y_expected = torch.tensor(
+#     [
+#         [
+#             [-1.10382, -0.37219, 0.35944, 1.09108],
+#             [-1.45792, -0.50067, 0.45658, 1.41384],
+#             [-1.74349, -0.60428, 0.53493, 1.67414],
+#             [-1.92584, -0.67044, 0.58495, 1.84035],
+#         ],
+#         [
+#             [-4.59671, -1.63952, 1.31767, 4.27486],
+#             [-4.65586, -1.66098, 1.33390, 4.32877],
+#             [-4.69005, -1.67339, 1.34328, 4.35994],
+#             [-4.71039, -1.68077, 1.34886, 4.37848],
+#         ],
+#     ]
+# )
+#
+# dy_expected = torch.tensor(
+#     [
+#         [
+#             [-0.09084, -0.08961, -0.08838, -0.08715],
+#             [0.69305, 0.68366, 0.67426, 0.66487],
+#             [-0.88989, -0.87783, -0.86576, -0.85370],
+#             [0.25859, 0.25509, 0.25158, 0.24808],
+#         ],
+#         [
+#             [-0.05360, -0.05287, -0.05214, -0.05142],
+#             [0.11627, 0.11470, 0.11312, 0.11154],
+#             [-0.01048, -0.01034, -0.01019, -0.01005],
+#             [-0.03908, -0.03855, -0.03802, -0.03749],
+#         ],
+#     ]
+# )
+#
+# y = atten_single(query, key, value)
+# dy = torch.randn(*y.shape)  # , **to_double_cuda
+#
+# y.backward(dy)
+# query_grad = query.grad
+#
+# print("SelfAttention error: ", rel_error(y_expected, y))
+# print("SelfAttention error: ", rel_error(dy_expected, query_grad))
+# ---------------------------------------------------------------------------------------------------------
+# reset_seed(0)
+# N = 2
+# K = 4
+# norm = LayerNormalization(K)
+# inp = torch.linspace(-0.4, 0.6, steps=N * K, requires_grad=True).reshape(N, K)
+#
+# inp.retain_grad()
+# y = norm(inp)
+#
+# y_expected = torch.tensor(
+#     [[-1.34164, -0.44721, 0.44721, 1.34164], [-1.34164, -0.44721, 0.44721, 1.34164]]
+# )
+#
+# dy_expected = torch.tensor(
+#     [[  5.70524,  -2.77289, -11.56993,   8.63758],
+#         [  2.26242,  -4.44330,   2.09933,   0.08154]]
+# )
+#
+# dy = torch.randn(*y.shape)
+# y.backward(dy)
+# inp_grad = inp.grad
+#
+# print("LayerNormalization error: ", rel_error(y_expected, y))
+# print("LayerNormalization grad error: ", rel_error(dy_expected, inp_grad))

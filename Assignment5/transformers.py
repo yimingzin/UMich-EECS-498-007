@@ -94,14 +94,11 @@ def scaled_dot_product_no_loop_batch(
 
     N, K, M = query.shape
     N, K_k, M = key.shape
-    y = None
-    weights_softmax = None
 
-    attention_scores = torch.bmm(query, key.permute(0, 2, 1))
-    attention_scores = attention_scores / math.sqrt(M)
+    attention_scores = torch.bmm(query, key.permute(0, 2, 1)) / math.sqrt(M)
 
     if mask is not None:
-        torch.masked_fill(attention_scores, mask, -1e9)
+        attention_scores = torch.masked_fill(attention_scores, mask, -1e9)
 
     weights_softmax = F.softmax(attention_scores, dim=-1)
     y = torch.bmm(weights_softmax, value)
@@ -111,59 +108,47 @@ def scaled_dot_product_no_loop_batch(
 class SelfAttention(nn.Module):
     def __init__(self, dim_in: int, dim_q: int, dim_v: int):
         super().__init__()
-        """
-        args:
-            dim_in: an int value for input sequence embedding dimension
-            dim_q: an int value for output dimension of query and ley vector
-            dim_v: an int value for output dimension for value vectors
-        """
+
         self.q = nn.Linear(dim_in, dim_q)
         self.k = nn.Linear(dim_in, dim_q)
         self.v = nn.Linear(dim_in, dim_v)
+        self.weights_softmax = None
 
-        """
-        If a Linear layer has input dimension D_in and output dimension D_out  
-        then initialize the weights sampled from a uniform distribution bounded
-        by [-c, c]                                                             
-        where c = sqrt(6/(D_in + D_out)) 
-        """
-
-        # initialize weights
         for layer in [self.q, self.k, self.v]:
-            D_in, D_out = layer.weight.shape
-            c = math.sqrt(6 / (D_in + D_out))
+            Dim_in, Dim_out = layer.weight.shape
+            c = math.sqrt(6 / (Dim_in + Dim_out))
             nn.init.uniform_(layer.weight, a=-c, b=c)
-        '''
-            c1 = math.sqrt(6 / (dim_in + dim_q))
-            c2 = math.sqrt(6 / (dim_in + dim_v))
 
-            nn.init.uniform_(self.q.weight, a=-c1, b=c1)
-            nn.init.uniform_(self.k.weight, a=-c1, b=c1)
-            nn.init.uniform_(self.v.weight, a=-c2, b=c2)
-        '''
+    def forward(self, query: Tensor, key: Tensor, value: Tensor, mask: Tensor = None):
 
-    def forward(
-            self, query: Tensor, key: Tensor, value: Tensor, mask: Tensor = None
-    ) -> Tensor:
-        """
-        Args:
-            query: Tensor of shape (N, K, M)
-            key: Tensor of shape (N, K, M)
-            value: Tensor of shape (N, K, M)
-            mask: Tensor of shape (N, K, K)
-        Returns:
-            y: Tensor of shape (N, K, dim_v)
-        """
-
-        self.weights_softmax = (
+        y = None
+        weights_softmax = (
             None
         )
-        y = None
+        query = self.q.forward(query)
+        key = self.k.forward(key)
+        value = self.v.forward(value)
 
-        query = self.q(query)
-        key = self.k(key)
-        value = self.v(value)
-
-        y, self.weights_softmax = scaled_dot_product_no_loop_batch(query, key, value, mask)
+        y, weights_softmax = scaled_dot_product_no_loop_batch(query, key, value, mask)
 
         return y
+
+class LayerNormalization(nn.Module):
+    def __init__(self, emb_dim: int, epsilon: float = 1e-10):
+        super().__init__()
+
+        self.epsilon = epsilon
+        self.gamma = nn.Parameter(torch.ones(emb_dim))
+        self.beta = nn.Parameter(torch.zeros(emb_dim))
+
+    def forward(self, x: Tensor):
+
+        mean = torch.mean(x, dim=-1, keepdim=True)
+        # std = torch.sqrt(torch.mean((x - mean) ** 2, dim=-1, keepdim=True))
+        std = torch.std(x, dim=-1, keepdim=True, unbiased=False)
+
+        x_norm = (x - mean) / (std + self.epsilon)
+        y = self.gamma * x_norm + self.beta
+
+        return y
+
