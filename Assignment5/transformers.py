@@ -6,32 +6,21 @@ from torch.nn import functional as F
 
 
 def generate_token_dict(vocab):
-    """
-    :param vocab:  ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "POSITIVE", "NEGATIVE", "add", "subtract", "BOS", "EOS"]
-    :return: dictionary token_dict: vocab列表中的元素对应的索引 {"0": 0, "1": 1, ... "POSITIVE": 10, ...}
-    """
     token_dict = {}
-
     for i, w in enumerate(vocab):
         token_dict[w] = i
 
     return token_dict
 
+
 def prepocess_input_sequence(
-        input_str: str, token_dict: dict, spc_tokens: list
+        input_str: str, token_dict: dict, spe_tokens: list
 ):
-    """
-    :param input_str: eg: "BOS POSITIVE 0333 add POSITIVE 0696 EOS"
-    :param token_dict: eg: {'BOS': 1, 'POSITIVE': 2, 'add': 3, 'EOS': 4, '0': 5, '3': 6, '6': 7, '9': 8}
-    :param spc_tokens: eg: ['BOS', 'POSITIVE', 'add', 'EOS']
-    :return: [1, 2, 5, 6, 6, 6, 3, 2, 5, 7, 8, 7, 4]
-    """
     out = []
 
     words = input_str.split()
-
     for i, w in enumerate(words):
-        if w in spc_tokens:
+        if w in spe_tokens:
             out.append(token_dict[w])
         else:
             for ch in w:
@@ -40,8 +29,8 @@ def prepocess_input_sequence(
     return out
 
 def scaled_dot_product_two_loop_single(
-    query: Tensor, key: Tensor, value: Tensor
-):
+        query: Tensor, key: Tensor, value: Tensor
+) -> Tensor:
 
     K, M = query.shape
     K_k, M = key.shape
@@ -52,21 +41,15 @@ def scaled_dot_product_two_loop_single(
         for j in range(K_k):
             attention_scores[i, j] = torch.inner(query[i], key[j])
 
-    '''
-    # with no loops dot_product_single
-    attention_scores = torch.mm(query, key.transpose(1, 0))
-    '''
-
     attention_scores = attention_scores / math.sqrt(M)
-    attention_scores = F.softmax(attention_scores, dim=-1)
+    weights_softmax = F.softmax(attention_scores, dim=-1)
+    y = torch.mm(weights_softmax, value)
 
-    out = torch.mm(attention_scores, value)
-
-    return out
+    return y
 
 def scaled_dot_product_two_loop_batch(
     query: Tensor, key: Tensor, value: Tensor
-):
+) -> Tensor:
 
     N, K, M = query.shape
     N, K_k, M = key.shape
@@ -75,18 +58,13 @@ def scaled_dot_product_two_loop_batch(
 
     for i in range(K):
         for j in range(K_k):
-            attention_scores[:, i, j] = (query[:, i] * key[:, j]).sum(dim=-1)
-    '''
-    # with no loops dot_product_batch
-    attention_scores = torch.bmm(query, key.permute(0, 2, 1))
-    '''
+            attention_scores[:, i, j] = torch.sum(query[:, i, :] * key[:, j, :], dim=1)
 
     attention_scores = attention_scores / math.sqrt(M)
-    attention_scores = F.softmax(attention_scores, dim=-1)
+    weights_softmax = F.softmax(attention_scores, dim=-1)
+    y = torch.bmm(weights_softmax, value)
 
-    out = torch.bmm(attention_scores, value)
-
-    return out
+    return y
 
 def scaled_dot_product_no_loop_batch(
     query: Tensor, key: Tensor, value: Tensor, mask: Tensor = None
@@ -95,12 +73,15 @@ def scaled_dot_product_no_loop_batch(
     N, K, M = query.shape
     N, K_k, M = key.shape
 
+    attention_scores = torch.zeros((N, K, K_k), dtype=query.dtype, device=query.device)
+
     attention_scores = torch.bmm(query, key.permute(0, 2, 1)) / math.sqrt(M)
 
     if mask is not None:
         attention_scores = torch.masked_fill(attention_scores, mask, -1e9)
 
     weights_softmax = F.softmax(attention_scores, dim=-1)
+
     y = torch.bmm(weights_softmax, value)
 
     return y, weights_softmax
@@ -119,17 +100,36 @@ class SelfAttention(nn.Module):
             c = math.sqrt(6 / (Dim_in + Dim_out))
             nn.init.uniform_(layer.weight, a=-c, b=c)
 
-    def forward(self, query: Tensor, key: Tensor, value: Tensor, mask: Tensor = None):
+    def forward(self, query: Tensor, key: Tensor, value: Tensor, mask: Tensor = None) -> Tensor:
 
         y = None
-        weights_softmax = (
+        self.weights_softmax = (
             None
         )
         query = self.q.forward(query)
         key = self.k.forward(key)
         value = self.v.forward(value)
 
-        y, weights_softmax = scaled_dot_product_no_loop_batch(query, key, value, mask)
+        y, self.weights_softmax = scaled_dot_product_no_loop_batch(query, key, value, mask)
+
+        return y
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, num_heads: int, dim_in: int, dim_out: int):
+        super().__init__()
+        self.heads = nn.ModuleList([SelfAttention(dim_in, dim_out, dim_out) for _ in range(num_heads)])
+        self.output_transform = nn.Linear(num_heads * dim_out, dim_in)
+
+        c = math.sqrt(6 / (dim_in + dim_out))
+        nn.init.uniform_(self.output_transform.weight, a=-c, b=c)
+
+    def forward(self, query: Tensor, key: Tensor, value: Tensor, mask: Tensor = None) -> Tensor:
+
+        y = []
+        for head in self.heads:
+            y.append(head.forward(query, key, value, mask))
+        y = torch.cat(y, dim=-1)
+        y = self.output_transform(y)
 
         return y
 
@@ -143,12 +143,11 @@ class LayerNormalization(nn.Module):
 
     def forward(self, x: Tensor):
 
-        mean = torch.mean(x, dim=-1, keepdim=True)
-        # std = torch.sqrt(torch.mean((x - mean) ** 2, dim=-1, keepdim=True))
+        mean = torch.mean(x, dim = -1, keepdim=True)
         std = torch.std(x, dim=-1, keepdim=True, unbiased=False)
 
-        x_norm = (x - mean) / (std + self.epsilon)
-        y = self.gamma * x_norm + self.beta
+        norm = (x - mean) / std
+
+        y = self.gamma * norm + self.beta
 
         return y
-

@@ -330,6 +330,68 @@ vocab = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] + SPECIAL_TOKENS
 # ---------------------------------------------------------------------------------------------------------
 # reset_seed(0)
 # N = 2
+# num_heads = 2
+# K = 4
+# M = inp_emb_size = 4
+# out_emb_size = 8
+# atten_multihead = MultiHeadAttention(num_heads, inp_emb_size, out_emb_size)
+#
+# for k, v in atten_multihead.named_parameters():
+#     # print(k, v.shape) # uncomment this to see the weight shape
+#     v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
+#
+# query = torch.linspace(-0.4, 0.6, steps=N * K * M, requires_grad=True).reshape(
+#     N, K, M
+# )  # **to_double_cuda
+# key = torch.linspace(-0.8, 0.5, steps=N * K * M, requires_grad=True).reshape(
+#     N, K, M
+# )  # **to_double_cuda
+# value = torch.linspace(-0.3, 0.8, steps=N * K * M, requires_grad=True).reshape(
+#     N, K, M
+# )  # *to_double_cuda
+#
+# query.retain_grad()
+# key.retain_grad()
+# value.retain_grad()
+#
+# y_expected = torch.tensor(
+#     [
+#         [
+#             [-0.23104, 0.50132, 1.23367, 1.96603],
+#             [0.68324, 1.17869, 1.67413, 2.16958],
+#             [1.40236, 1.71147, 2.02058, 2.32969],
+#             [1.77330, 1.98629, 2.19928, 2.41227],
+#         ],
+#         [
+#             [6.74946, 5.67302, 4.59659, 3.52015],
+#             [6.82813, 5.73131, 4.63449, 3.53767],
+#             [6.86686, 5.76001, 4.65315, 3.54630],
+#             [6.88665, 5.77466, 4.66268, 3.55070],
+#         ],
+#     ]
+# )
+# dy_expected = torch.tensor(
+#     [[[ 0.56268,  0.55889,  0.55510,  0.55131],
+#          [ 0.43286,  0.42994,  0.42702,  0.42411],
+#          [ 2.29865,  2.28316,  2.26767,  2.25218],
+#          [ 0.49172,  0.48841,  0.48509,  0.48178]],
+#
+#         [[ 0.25083,  0.24914,  0.24745,  0.24576],
+#          [ 0.14949,  0.14849,  0.14748,  0.14647],
+#          [-0.03105, -0.03084, -0.03063, -0.03043],
+#          [-0.02082, -0.02068, -0.02054, -0.02040]]]
+# )
+#
+# y = atten_multihead(query, key, value)
+# dy = torch.randn(*y.shape)  # , **to_double_cuda
+#
+# y.backward(dy)
+# query_grad = query.grad
+# print("MultiHeadAttention error: ", rel_error(y_expected, y))
+# print("MultiHeadAttention error: ", rel_error(dy_expected, query_grad))
+# ---------------------------------------------------------------------------------------------------------
+# reset_seed(0)
+# N = 2
 # K = 4
 # norm = LayerNormalization(K)
 # inp = torch.linspace(-0.4, 0.6, steps=N * K, requires_grad=True).reshape(N, K)
@@ -352,3 +414,4 @@ vocab = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] + SPECIAL_TOKENS
 #
 # print("LayerNormalization error: ", rel_error(y_expected, y))
 # print("LayerNormalization grad error: ", rel_error(dy_expected, inp_grad))
+# ---------------------------------------------------------------------------------------------------------
