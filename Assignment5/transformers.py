@@ -151,3 +151,41 @@ class LayerNormalization(nn.Module):
         y = self.gamma * norm + self.beta
 
         return y
+
+class FeedForwardBlock(nn.Module):
+    def __init__(self, inp_dim: int, hidden_dim_feedforward: int):
+        super().__init__()
+        self.linear_1 = nn.Linear(inp_dim, hidden_dim_feedforward)
+        self.relu = nn.ReLU()
+        self.linear_2 = nn.Linear(hidden_dim_feedforward, inp_dim)
+
+        c = math.sqrt(6 / (inp_dim + hidden_dim_feedforward))
+        nn.init.uniform_(self.linear_1.weight, a=-c, b=c)
+        nn.init.uniform_(self.linear_2.weight, a=-c, b=c)
+
+    def forward(self, x: Tensor):
+        y = self.linear_2.forward(self.relu.forward(self.linear_1.forward(x)))
+        return y
+
+class EncoderBlock(nn.Module):
+    def __init__(
+        self, num_heads: int, emb_dim: int, feedforward_dim: int, dropout: float
+    ):
+        super().__init__()
+
+        if emb_dim % num_heads != 0:
+            raise ValueError(
+                f"""The value emb_dim = {emb_dim} is not divisible by num_heads = {num_heads}. Please select an appropriate value."""
+            )
+
+        self.MultiHeadAttention = MultiHeadAttention(num_heads, emb_dim, emb_dim // num_heads)
+        self.ln_1 = LayerNormalization(emb_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.feedforward = FeedForwardBlock(emb_dim, feedforward_dim)
+        self.ln_2 = LayerNormalization(emb_dim)
+
+    def forward(self, x):
+        x = self.dropout.forward(self.ln_1.forward(self.MultiHeadAttention.forward(x, x, x) + x))
+        y = self.dropout.forward(self.ln_2.forward(x + self.feedforward.forward(x)))
+
+        return y
