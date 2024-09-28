@@ -31,12 +31,6 @@ plt.rcParams["image.cmap"] = "gray"
 to_float = torch.float
 to_long = torch.long
 
-if torch.cuda.is_available():
-    print("Good to go!")
-    DEVICE = torch.device("cuda")
-else:
-    print("Please set GPU via Edit -> Notebook Settings.")
-    DEVICE = torch.device("cpu")
 
 from a5_helper import get_toy_data
 
@@ -46,6 +40,8 @@ data = get_toy_data(os.path.join('./', "two_digit_op.json"))
 # Create vocab
 SPECIAL_TOKENS = ["POSITIVE", "NEGATIVE", "add", "subtract", "BOS", "EOS"]
 vocab = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] + SPECIAL_TOKENS
+
+convert_str_to_tokens = generate_token_dict(vocab)
 
 # ---------------------------------------------------------------------------------------------------------
 #
@@ -446,68 +442,278 @@ vocab = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] + SPECIAL_TOKENS
 # print("FeedForwardBlock error: ", rel_error(y_expected, y))
 # print("FeedForwardBlock error: ", rel_error(dy_expected, inp_grad))
 # ---------------------------------------------------------------------------------------------------------
+# reset_seed(0)
+# N = 2
+# num_heads = 2
+# emb_dim = K = 4
+# feedforward_dim = 8
+# M = inp_emb_size = 4
+# out_emb_size = 8
+# dropout = 0.2
+#
+# enc_seq_inp = torch.linspace(-0.4, 0.6, steps=N * K * M, requires_grad=True).reshape(
+#     N, K, M
+# )  # **to_double_cuda
+#
+# enc_block = EncoderBlock(num_heads, emb_dim, feedforward_dim, dropout)
+#
+# for k, v in enc_block.named_parameters():
+#     # print(k, v.shape) # uncomment this to see the weight shape
+#     v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
+#
+# encoder_out1_expected = torch.tensor(
+#     [[[ 0.00000, -0.31357,  0.69126,  0.00000],
+#          [ 0.42630, -0.25859,  0.72412,  3.87013],
+#          [ 0.00000, -0.31357,  0.69126,  3.89884],
+#          [ 0.47986, -0.30568,  0.69082,  3.90563]],
+#
+#         [[ 0.00000, -0.31641,  0.69000,  3.89921],
+#          [ 0.47986, -0.30568,  0.69082,  3.90563],
+#          [ 0.47986, -0.30568,  0.69082,  3.90563],
+#          [ 0.51781, -0.30853,  0.71598,  3.85171]]]
+# )
+# encoder_out1 = enc_block(enc_seq_inp)
+# print("EncoderBlock error 1: ", rel_error(encoder_out1, encoder_out1_expected))
+#
+#
+# N = 2
+# num_heads = 1
+# emb_dim = K = 4
+# feedforward_dim = 8
+# M = inp_emb_size = 4
+# out_emb_size = 8
+# dropout = 0.2
+#
+# enc_seq_inp = torch.linspace(-0.4, 0.6, steps=N * K * M, requires_grad=True).reshape(
+#     N, K, M
+# )  # **to_double_cuda
+#
+# enc_block = EncoderBlock(num_heads, emb_dim, feedforward_dim, dropout)
+#
+# for k, v in enc_block.named_parameters():
+#     # print(k, v.shape) # uncomment this to see the weight shape
+#     v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
+#
+# encoder_out2_expected = torch.tensor(
+#     [[[ 0.42630, -0.00000,  0.72412,  3.87013],
+#          [ 0.49614, -0.31357,  0.00000,  3.89884],
+#          [ 0.47986, -0.30568,  0.69082,  0.00000],
+#          [ 0.51654, -0.32455,  0.69035,  3.89216]],
+#
+#         [[ 0.47986, -0.30568,  0.69082,  0.00000],
+#          [ 0.49614, -0.31357,  0.69126,  3.89884],
+#          [ 0.00000, -0.30354,  0.76272,  3.75311],
+#          [ 0.49614, -0.31357,  0.69126,  3.89884]]]
+# )
+# encoder_out2 = enc_block(enc_seq_inp)
+# print("EncoderBlock error 2: ", rel_error(encoder_out2, encoder_out2_expected))
+# ---------------------------------------------------------------------------------------------------------
+# from transformers import get_subsequent_mask
+#
+# reset_seed(0)
+# seq_len_enc = K = 4
+# M = inp_emb_size = 3
+#
+# inp_sequence = torch.linspace(-0.4, 0.6, steps=K * M, requires_grad=True).reshape(
+#     K, M
+# )  # **to_double_cuda
+#
+# mask_expected = torch.tensor(
+#     [
+#         [[False, True, True], [False, False, True], [False, False, False]],
+#         [[False, True, True], [False, False, True], [False, False, False]],
+#         [[False, True, True], [False, False, True], [False, False, False]],
+#         [[False, True, True], [False, False, True], [False, False, False]],
+#     ]
+# )
+# mask_predicted = get_subsequent_mask(inp_sequence)
+# print(
+#     "get_subsequent_mask error: ", rel_error(mask_predicted.int(), mask_expected.int())
+# )
+#
+# reset_seed(0)
+# N = 4
+# K = 3
+# M = 3
+#
+# query = torch.linspace(-0.4, 0.6, steps=K * M * N, requires_grad=True).reshape(N, K, M)
+# key = torch.linspace(-0.1, 0.2, steps=K * M * N, requires_grad=True).reshape(N, K, M)
+# value = torch.linspace(0.4, 0.8, steps=K * M * N, requires_grad=True).reshape(N, K, M)
+#
+# y_expected = torch.tensor(
+#     [
+#         [
+#             [0.40000, 0.41143, 0.42286],
+#             [0.41703, 0.42846, 0.43989],
+#             [0.43408, 0.44551, 0.45694],
+#         ],
+#         [
+#             [0.50286, 0.51429, 0.52571],
+#             [0.51999, 0.53142, 0.54285],
+#             [0.53720, 0.54863, 0.56006],
+#         ],
+#         [
+#             [0.60571, 0.61714, 0.62857],
+#             [0.62294, 0.63437, 0.64580],
+#             [0.64032, 0.65175, 0.66318],
+#         ],
+#         [
+#             [0.70857, 0.72000, 0.73143],
+#             [0.72590, 0.73733, 0.74876],
+#             [0.74344, 0.75487, 0.76630],
+#         ],
+#     ]
+# )
+# y_predicted, _ = scaled_dot_product_no_loop_batch(query, key, value, mask_expected)
+#
+# print("scaled_dot_product_no_loop_batch error: ", rel_error(y_expected, y_predicted))
+# ---------------------------------------------------------------------------------------------------------
 reset_seed(0)
 N = 2
 num_heads = 2
-emb_dim = K = 4
+seq_len_enc = K1 = 4
+seq_len_dec = K2 = 2
 feedforward_dim = 8
-M = inp_emb_size = 4
+M = emb_dim = 4
 out_emb_size = 8
 dropout = 0.2
 
-enc_seq_inp = torch.linspace(-0.4, 0.6, steps=N * K * M, requires_grad=True).reshape(
-    N, K, M
-)  # **to_double_cuda
+dec_inp = torch.linspace(-0.4, 0.6, steps=N * K1 * M, requires_grad=True).reshape(
+    N, K1, M
+)
+enc_out = torch.linspace(-0.4, 0.6, steps=N * K2 * M, requires_grad=True).reshape(
+    N, K2, M
+)
+dec_block = DecoderBlock(num_heads, emb_dim, feedforward_dim, dropout)
 
-enc_block = EncoderBlock(num_heads, emb_dim, feedforward_dim, dropout)
-
-for k, v in enc_block.named_parameters():
+for k, v in dec_block.named_parameters():
     # print(k, v.shape) # uncomment this to see the weight shape
     v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
 
-encoder_out1_expected = torch.tensor(
-    [[[ 0.00000, -0.31357,  0.69126,  0.00000],
-         [ 0.42630, -0.25859,  0.72412,  3.87013],
-         [ 0.00000, -0.31357,  0.69126,  3.89884],
-         [ 0.47986, -0.30568,  0.69082,  3.90563]],
 
-        [[ 0.00000, -0.31641,  0.69000,  3.89921],
-         [ 0.47986, -0.30568,  0.69082,  3.90563],
-         [ 0.47986, -0.30568,  0.69082,  3.90563],
-         [ 0.51781, -0.30853,  0.71598,  3.85171]]]
+dec_out_expected = torch.tensor(
+    [[[ 0.50623, -0.32496,  0.00000,  0.00000],
+         [ 0.00000, -0.31690,  0.76956,  3.72647],
+         [ 0.49014, -0.32809,  0.66595,  3.93773],
+         [ 0.00000, -0.00000,  0.68203,  3.90856]],
+
+        [[ 0.51042, -0.32787,  0.68093,  3.90848],
+         [ 0.00000, -0.31637,  0.72275,  3.83122],
+         [ 0.64868, -0.00000,  0.77715,  0.00000],
+         [ 0.00000, -0.33105,  0.66565,  3.93602]]]
 )
-encoder_out1 = enc_block(enc_seq_inp)
-print("EncoderBlock error 1: ", rel_error(encoder_out1, encoder_out1_expected))
-
+dec_out1 = dec_block(dec_inp, enc_out)
+print("DecoderBlock error: ", rel_error(dec_out1, dec_out_expected))
 
 N = 2
-num_heads = 1
-emb_dim = K = 4
-feedforward_dim = 8
-M = inp_emb_size = 4
+num_heads = 2
+seq_len_enc = K1 = 4
+seq_len_dec = K2 = 4
+feedforward_dim = 4
+M = emb_dim = 4
 out_emb_size = 8
 dropout = 0.2
 
-enc_seq_inp = torch.linspace(-0.4, 0.6, steps=N * K * M, requires_grad=True).reshape(
-    N, K, M
-)  # **to_double_cuda
+dec_inp = torch.linspace(-0.4, 0.6, steps=N * K1 * M, requires_grad=True).reshape(
+    N, K1, M
+)
+enc_out = torch.linspace(-0.4, 0.6, steps=N * K2 * M, requires_grad=True).reshape(
+    N, K2, M
+)
+dec_block = DecoderBlock(num_heads, emb_dim, feedforward_dim, dropout)
 
-enc_block = EncoderBlock(num_heads, emb_dim, feedforward_dim, dropout)
-
-for k, v in enc_block.named_parameters():
+for k, v in dec_block.named_parameters():
     # print(k, v.shape) # uncomment this to see the weight shape
     v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
 
-encoder_out2_expected = torch.tensor(
-    [[[ 0.42630, -0.00000,  0.72412,  3.87013],
-         [ 0.49614, -0.31357,  0.00000,  3.89884],
-         [ 0.47986, -0.30568,  0.69082,  0.00000],
-         [ 0.51654, -0.32455,  0.69035,  3.89216]],
 
-        [[ 0.47986, -0.30568,  0.69082,  0.00000],
-         [ 0.49614, -0.31357,  0.69126,  3.89884],
-         [ 0.00000, -0.30354,  0.76272,  3.75311],
-         [ 0.49614, -0.31357,  0.69126,  3.89884]]]
+dec_out_expected = torch.tensor(
+    [[[ 0.46707, -0.31916,  0.66218,  3.95182],
+         [ 0.00000, -0.31116,  0.66325,  0.00000],
+         [ 0.44538, -0.32419,  0.64068,  3.98847],
+         [ 0.49012, -0.31276,  0.68795,  3.90610]],
+
+        [[ 0.45800, -0.33023,  0.64106,  3.98324],
+         [ 0.45829, -0.31487,  0.66203,  3.95529],
+         [ 0.59787, -0.00000,  0.72361,  0.00000],
+         [ 0.70958, -0.37051,  0.78886,  3.63179]]]
 )
-encoder_out2 = enc_block(enc_seq_inp)
-print("EncoderBlock error 2: ", rel_error(encoder_out2, encoder_out2_expected))
+dec_out2 = dec_block(dec_inp, enc_out)
+print("DecoderBlock error: ", rel_error(dec_out2, dec_out_expected))
+# ---------------------------------------------------------------------------------------------------------
+# from transformers import position_encoding_simple
+#
+# reset_seed(0)
+# K = 4
+# M = emb_size = 4
+#
+# y = position_encoding_simple(K, M)
+# y_expected = torch.tensor(
+#     [
+#         [
+#             [0.00000, 0.00000, 0.00000, 0.00000],
+#             [0.25000, 0.25000, 0.25000, 0.25000],
+#             [0.50000, 0.50000, 0.50000, 0.50000],
+#             [0.75000, 0.75000, 0.75000, 0.75000],
+#         ]
+#     ]
+# )
+#
+# print("position_encoding_simple error: ", rel_error(y, y_expected))
+#
+# K = 5
+# M = emb_size = 3
+#
+#
+# y = position_encoding_simple(K, M)
+# y_expected = torch.tensor(
+#     [
+#         [
+#             [0.00000, 0.00000, 0.00000],
+#             [0.20000, 0.20000, 0.20000],
+#             [0.40000, 0.40000, 0.40000],
+#             [0.60000, 0.60000, 0.60000],
+#             [0.80000, 0.80000, 0.80000],
+#         ]
+#     ]
+# )
+# print("position_encoding_simple error: ", rel_error(y, y_expected))
+# ---------------------------------------------------------------------------------------------------------
+# from transformers import position_encoding_sinusoid
+#
+# reset_seed(0)
+# K = 4
+# M = emb_size = 4
+#
+# y1 = position_encoding_sinusoid(K, M)
+# y_expected = torch.tensor(
+#     [
+#         [
+#             [0.00000, 1.00000, 0.00000, 1.00000],
+#             [0.84147, 0.54030, 0.84147, 0.54030],
+#             [0.90930, -0.41615, 0.90930, -0.41615],
+#             [0.14112, -0.98999, 0.14112, -0.98999],
+#         ]
+#     ]
+# )
+#
+# print("position_encoding error: ", rel_error(y1, y_expected))
+#
+# K = 5
+# M = emb_size = 3
+#
+#
+# y2 = position_encoding_sinusoid(K, M)
+# y_expected = torch.tensor(
+#     [
+#         [
+#             [0.00000, 1.00000, 0.00000],
+#             [0.84147, 0.54030, 0.84147],
+#             [0.90930, -0.41615, 0.90930],
+#             [0.14112, -0.98999, 0.14112],
+#             [-0.75680, -0.65364, -0.75680],
+#         ]
+#     ]
+# )
+# print("position_encoding error: ", rel_error(y2, y_expected))
+# ---------------------------------------------------------------------------------------------------------
