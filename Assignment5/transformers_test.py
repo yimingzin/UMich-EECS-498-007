@@ -7,7 +7,7 @@ from torch import Tensor
 from torch import nn
 
 import torch
-
+import torch.utils.data
 from torch import nn
 import torch.nn.functional as F
 
@@ -27,6 +27,14 @@ from IPython.display import Image
 plt.rcParams["figure.figsize"] = (10.0, 8.0)  # set default size of plots
 plt.rcParams["image.interpolation"] = "nearest"
 plt.rcParams["image.cmap"] = "gray"
+
+to_float = torch.float
+to_long = torch.long
+
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+else:
+    DEVICE = torch.device("cpu")
 
 to_float = torch.float
 to_long = torch.long
@@ -568,78 +576,78 @@ convert_str_to_tokens = generate_token_dict(vocab)
 #
 # print("scaled_dot_product_no_loop_batch error: ", rel_error(y_expected, y_predicted))
 # ---------------------------------------------------------------------------------------------------------
-reset_seed(0)
-N = 2
-num_heads = 2
-seq_len_enc = K1 = 4
-seq_len_dec = K2 = 2
-feedforward_dim = 8
-M = emb_dim = 4
-out_emb_size = 8
-dropout = 0.2
-
-dec_inp = torch.linspace(-0.4, 0.6, steps=N * K1 * M, requires_grad=True).reshape(
-    N, K1, M
-)
-enc_out = torch.linspace(-0.4, 0.6, steps=N * K2 * M, requires_grad=True).reshape(
-    N, K2, M
-)
-dec_block = DecoderBlock(num_heads, emb_dim, feedforward_dim, dropout)
-
-for k, v in dec_block.named_parameters():
-    # print(k, v.shape) # uncomment this to see the weight shape
-    v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
-
-
-dec_out_expected = torch.tensor(
-    [[[ 0.50623, -0.32496,  0.00000,  0.00000],
-         [ 0.00000, -0.31690,  0.76956,  3.72647],
-         [ 0.49014, -0.32809,  0.66595,  3.93773],
-         [ 0.00000, -0.00000,  0.68203,  3.90856]],
-
-        [[ 0.51042, -0.32787,  0.68093,  3.90848],
-         [ 0.00000, -0.31637,  0.72275,  3.83122],
-         [ 0.64868, -0.00000,  0.77715,  0.00000],
-         [ 0.00000, -0.33105,  0.66565,  3.93602]]]
-)
-dec_out1 = dec_block(dec_inp, enc_out)
-print("DecoderBlock error: ", rel_error(dec_out1, dec_out_expected))
-
-N = 2
-num_heads = 2
-seq_len_enc = K1 = 4
-seq_len_dec = K2 = 4
-feedforward_dim = 4
-M = emb_dim = 4
-out_emb_size = 8
-dropout = 0.2
-
-dec_inp = torch.linspace(-0.4, 0.6, steps=N * K1 * M, requires_grad=True).reshape(
-    N, K1, M
-)
-enc_out = torch.linspace(-0.4, 0.6, steps=N * K2 * M, requires_grad=True).reshape(
-    N, K2, M
-)
-dec_block = DecoderBlock(num_heads, emb_dim, feedforward_dim, dropout)
-
-for k, v in dec_block.named_parameters():
-    # print(k, v.shape) # uncomment this to see the weight shape
-    v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
-
-
-dec_out_expected = torch.tensor(
-    [[[ 0.46707, -0.31916,  0.66218,  3.95182],
-         [ 0.00000, -0.31116,  0.66325,  0.00000],
-         [ 0.44538, -0.32419,  0.64068,  3.98847],
-         [ 0.49012, -0.31276,  0.68795,  3.90610]],
-
-        [[ 0.45800, -0.33023,  0.64106,  3.98324],
-         [ 0.45829, -0.31487,  0.66203,  3.95529],
-         [ 0.59787, -0.00000,  0.72361,  0.00000],
-         [ 0.70958, -0.37051,  0.78886,  3.63179]]]
-)
-dec_out2 = dec_block(dec_inp, enc_out)
-print("DecoderBlock error: ", rel_error(dec_out2, dec_out_expected))
+# reset_seed(0)
+# N = 2
+# num_heads = 2
+# seq_len_enc = K1 = 4
+# seq_len_dec = K2 = 2
+# feedforward_dim = 8
+# M = emb_dim = 4
+# out_emb_size = 8
+# dropout = 0.2
+#
+# dec_inp = torch.linspace(-0.4, 0.6, steps=N * K1 * M, requires_grad=True).reshape(
+#     N, K1, M
+# )
+# enc_out = torch.linspace(-0.4, 0.6, steps=N * K2 * M, requires_grad=True).reshape(
+#     N, K2, M
+# )
+# dec_block = DecoderBlock(num_heads, emb_dim, feedforward_dim, dropout)
+#
+# for k, v in dec_block.named_parameters():
+#     # print(k, v.shape) # uncomment this to see the weight shape
+#     v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
+#
+#
+# dec_out_expected = torch.tensor(
+#     [[[ 0.50623, -0.32496,  0.00000,  0.00000],
+#          [ 0.00000, -0.31690,  0.76956,  3.72647],
+#          [ 0.49014, -0.32809,  0.66595,  3.93773],
+#          [ 0.00000, -0.00000,  0.68203,  3.90856]],
+#
+#         [[ 0.51042, -0.32787,  0.68093,  3.90848],
+#          [ 0.00000, -0.31637,  0.72275,  3.83122],
+#          [ 0.64868, -0.00000,  0.77715,  0.00000],
+#          [ 0.00000, -0.33105,  0.66565,  3.93602]]]
+# )
+# dec_out1 = dec_block(dec_inp, enc_out)
+# print("DecoderBlock error: ", rel_error(dec_out1, dec_out_expected))
+#
+# N = 2
+# num_heads = 2
+# seq_len_enc = K1 = 4
+# seq_len_dec = K2 = 4
+# feedforward_dim = 4
+# M = emb_dim = 4
+# out_emb_size = 8
+# dropout = 0.2
+#
+# dec_inp = torch.linspace(-0.4, 0.6, steps=N * K1 * M, requires_grad=True).reshape(
+#     N, K1, M
+# )
+# enc_out = torch.linspace(-0.4, 0.6, steps=N * K2 * M, requires_grad=True).reshape(
+#     N, K2, M
+# )
+# dec_block = DecoderBlock(num_heads, emb_dim, feedforward_dim, dropout)
+#
+# for k, v in dec_block.named_parameters():
+#     # print(k, v.shape) # uncomment this to see the weight shape
+#     v.data.copy_(torch.linspace(-1.4, 1.3, steps=v.numel()).reshape(*v.shape))
+#
+#
+# dec_out_expected = torch.tensor(
+#     [[[ 0.46707, -0.31916,  0.66218,  3.95182],
+#          [ 0.00000, -0.31116,  0.66325,  0.00000],
+#          [ 0.44538, -0.32419,  0.64068,  3.98847],
+#          [ 0.49012, -0.31276,  0.68795,  3.90610]],
+#
+#         [[ 0.45800, -0.33023,  0.64106,  3.98324],
+#          [ 0.45829, -0.31487,  0.66203,  3.95529],
+#          [ 0.59787, -0.00000,  0.72361,  0.00000],
+#          [ 0.70958, -0.37051,  0.78886,  3.63179]]]
+# )
+# dec_out2 = dec_block(dec_inp, enc_out)
+# print("DecoderBlock error: ", rel_error(dec_out2, dec_out_expected))
 # ---------------------------------------------------------------------------------------------------------
 # from transformers import position_encoding_simple
 #
@@ -717,3 +725,252 @@ print("DecoderBlock error: ", rel_error(dec_out2, dec_out_expected))
 # )
 # print("position_encoding error: ", rel_error(y2, y_expected))
 # ---------------------------------------------------------------------------------------------------------
+# from sklearn.model_selection import train_test_split
+# from transformers import AddSubDataset
+#
+# BATCH_SIZE = 16
+#
+# X, y = data["inp_expression"], data["out_expression"]
+#
+# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=0)
+#
+# train_data = AddSubDataset(
+#     X_train,
+#     y_train,
+#     convert_str_to_tokens,
+#     SPECIAL_TOKENS,
+#     32,
+#     position_encoding_simple,
+# )
+# valid_data = AddSubDataset(
+#     X_test, y_test, convert_str_to_tokens, SPECIAL_TOKENS, 32, position_encoding_simple
+# )
+#
+# train_loader = torch.utils.data.DataLoader(
+#     train_data, batch_size=BATCH_SIZE, shuffle=False, drop_last=True
+# )
+# valid_loader = torch.utils.data.DataLoader(
+#     valid_data, batch_size=BATCH_SIZE, shuffle=False, drop_last=True
+# )
+#
+# import torch.optim as optim
+# from transformers import Transformer
+#
+# inp_seq_len = 9
+# out_seq_len = 5
+# num_heads = 4
+# emb_dim = 32
+# dim_feedforward = 64
+# dropout = 0.2
+# num_enc_layers = 4
+# num_dec_layers = 4
+# vocab_len = len(vocab)
+#
+# model = Transformer(
+#     num_heads,
+#     emb_dim,
+#     dim_feedforward,
+#     dropout,
+#     num_enc_layers,
+#     num_dec_layers,
+#     vocab_len,
+# )
+# for it in train_loader:
+#   it
+#   break
+# inp, inp_pos, out, out_pos = it
+# device = DEVICE
+# model = model.to(device)
+# inp_pos = inp_pos.to(device)
+# out_pos = out_pos.to(device)
+# out = out.to(device)
+# inp = inp.to(device)
+#
+#
+# model_out = model(inp.long(), inp_pos, out.long(), out_pos)
+# assert model_out.size(0) == BATCH_SIZE * (out_seq_len - 1)
+# assert model_out.size(1) == vocab_len
+# ---------------------------------------------------------------------------------------------------------
+# from transformers import LabelSmoothingLoss, CrossEntropyLoss
+# import torch.optim as optim
+# from sklearn.model_selection import train_test_split
+# from transformers import Transformer
+# from a5_helper import train as train_transformer
+# from a5_helper import val as val_transformer
+#
+# X, y = data["inp_expression"], data["out_expression"]
+#
+# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=0)
+#
+# inp_seq_len = 9
+# out_seq_len = 5
+# num_heads = 4
+# emb_dim = 32
+# dim_feedforward = 32
+# dropout = 0.2
+# num_enc_layers = 1
+# num_dec_layers = 1
+# vocab_len = len(vocab)
+# BATCH_SIZE = 4
+# num_epochs=200 #number of epochs
+# lr=1e-3 #learning rate after warmup
+# loss_func = CrossEntropyLoss
+# warmup_interval = None #number of iterations for warmup
+#
+# model = Transformer(
+#     num_heads,
+#     emb_dim,
+#     dim_feedforward,
+#     dropout,
+#     num_enc_layers,
+#     num_dec_layers,
+#     vocab_len,
+# )
+# train_data = AddSubDataset(
+#     X_train,
+#     y_train,
+#     convert_str_to_tokens,
+#     SPECIAL_TOKENS,
+#     emb_dim,
+#     position_encoding_simple,
+# )
+# valid_data = AddSubDataset(
+#     X_test,
+#     y_test,
+#     convert_str_to_tokens,
+#     SPECIAL_TOKENS,
+#     emb_dim,
+#     position_encoding_simple,
+# )
+#
+# train_loader = torch.utils.data.DataLoader(
+#     train_data, batch_size=BATCH_SIZE, shuffle=False, drop_last=True
+# )
+# valid_loader = torch.utils.data.DataLoader(
+#     valid_data, batch_size=BATCH_SIZE, shuffle=False, drop_last=True
+# )
+#
+# small_dataset = torch.utils.data.Subset(
+#     train_data, torch.linspace(0, len(train_data) - 1, steps=4).long()
+# )
+# small_train_loader = torch.utils.data.DataLoader(
+#     small_dataset, batch_size=4, pin_memory=True, num_workers=1, shuffle=False
+# )
+#
+# if __name__ == '__main__':
+#     #Overfitting the model
+#     trained_model = train_transformer(
+#         model,
+#         small_train_loader,
+#         small_train_loader,
+#         loss_func,
+#         num_epochs=num_epochs,
+#         lr=lr,
+#         batch_size=BATCH_SIZE,
+#         warmup_interval=warmup_interval,
+#         device=DEVICE,
+#     )
+#
+#     #Overfitted accuracy
+#     print(
+#         "Overfitted accuracy: ",
+#         "{:.4f}".format(
+#             val_transformer(
+#                 trained_model,
+#                 small_train_loader,
+#                 CrossEntropyLoss,
+#                 batch_size=4,
+#                 device=DEVICE,
+#             )[1]
+#         ),
+#     )
+# ---------------------------------------------------------------------------------------------------------
+import torch.optim as optim
+from transformers import Transformer
+from sklearn.model_selection import train_test_split
+from a5_helper import train as train_transformer
+from a5_helper import val as val_transformer
+
+X, y = data["inp_expression"], data["out_expression"]
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=0)
+
+inp_seq_len = 9
+out_seq_len = 5
+BATCH_SIZE = 256
+
+#You should change these!
+
+num_heads = 8
+emb_dim = 256
+dim_feedforward = 512
+dropout = 0.1
+num_enc_layers = 4
+num_dec_layers = 4
+vocab_len = len(vocab)
+loss_func = CrossEntropyLoss
+poss_enc = position_encoding_simple
+num_epochs = 200
+warmup_interval = 500
+lr = 5e-4
+
+model = Transformer(
+    num_heads,
+    emb_dim,
+    dim_feedforward,
+    dropout,
+    num_enc_layers,
+    num_dec_layers,
+    vocab_len,
+)
+
+
+train_data = AddSubDataset(
+    X_train,
+    y_train,
+    convert_str_to_tokens,
+    SPECIAL_TOKENS,
+    emb_dim,
+    position_encoding_sinusoid,
+)
+valid_data = AddSubDataset(
+    X_test,
+    y_test,
+    convert_str_to_tokens,
+    SPECIAL_TOKENS,
+    emb_dim,
+    position_encoding_sinusoid,
+)
+
+train_loader = torch.utils.data.DataLoader(
+    train_data, batch_size=BATCH_SIZE, shuffle=False, drop_last=True
+)
+valid_loader = torch.utils.data.DataLoader(
+    valid_data, batch_size=BATCH_SIZE, shuffle=False, drop_last=True
+)
+
+if __name__ == '__main__':
+    # Training the model with complete data
+    trained_model = train_transformer(
+        model,
+        train_loader,
+        valid_loader,
+        loss_func,
+        num_epochs,
+        lr=lr,
+        batch_size=BATCH_SIZE,
+        warmup_interval=warmup_interval,
+        device=DEVICE
+    )
+    weights_path = os.path.join('D:/PythonProject/UMichLearn/Assignment5', "transformer.pt")
+    torch.save(trained_model.state_dict(), weights_path)
+
+    # Final validation accuracy
+    print(
+        "Final Model accuracy: ",
+        "{:.4f}".format(
+            val_transformer(
+                trained_model, valid_loader, LabelSmoothingLoss, 4, device=DEVICE
+            )[1]
+        ),
+    )
