@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch import nn
-
+from a5_helper import draw
 import torch
 import torch.utils.data
 from torch import nn
@@ -40,7 +40,7 @@ to_float = torch.float
 to_long = torch.long
 
 
-from a5_helper import get_toy_data
+from a5_helper import get_toy_data, inference
 
 # load the data using helper function
 data = get_toy_data(os.path.join('./', "two_digit_op.json"))
@@ -974,3 +974,124 @@ if __name__ == '__main__':
             )[1]
         ),
     )
+# ---------------------------------------------------------------------------------------------------------
+
+for it in valid_loader:
+    it
+    break
+inp, inp_pos, out, out_pos = it
+opposite_tokens_to_str = {v: k for k, v in convert_str_to_tokens.items()}
+device = torch.device("cuda")
+model = model.to(device)
+inp_pos = inp_pos.to(device)
+out_pos = out_pos.to(device)
+out = out.to(device)
+inp = inp.to(device)
+
+inp_exp = inp[:1, :]
+inp_exp_pos = inp_pos[:1]
+out_pos_exp = out_pos[:1, :]
+inp_seq = [opposite_tokens_to_str[w.item()] for w in inp_exp[0]]
+print(
+    "Input sequence: \n",
+    inp_seq[0]
+    + " "
+    + inp_seq[1]
+    + " "
+    + inp_seq[2]
+    + inp_seq[3]
+    + " "
+    + inp_seq[4]
+    + " "
+    + inp_seq[5]
+    + " "
+    + inp_seq[6]
+    + inp_seq[7]
+    + " "
+    + inp_seq[8],
+)
+inp_exp = inp_exp.long()
+
+out_seq_ans, _ = inference(
+    trained_model, inp_exp, inp_exp_pos, out_pos_exp, out_seq_len
+)
+
+trained_model.eval()
+
+print("Output Sequence:", end="\t")
+res = "BOS "
+for i in range(1, out_seq_ans.size(1)):
+    sym = opposite_tokens_to_str[out_seq_ans[0, i].item()]
+    if sym == "EOS":
+        break
+    res += sym + " "
+print(res)
+# ---------------------------------------------------------------------------------------------------------
+custom_seq = "BOS POSITIVE 02 subtract NEGATIVE 07 EOS"
+
+out = prepocess_input_sequence(custom_seq, convert_str_to_tokens, SPECIAL_TOKENS)
+inp_exp = torch.tensor(out).to(DEVICE)
+
+out_seq_ans, model_for_visv = inference(
+    trained_model, inp_exp, inp_exp_pos, out_pos_exp, out_seq_len
+)
+
+trained_model.eval()
+
+print("Output Sequence:", end="\t")
+res = "BOS "
+for i in range(1, out_seq_ans.size(1)):
+    sym = opposite_tokens_to_str[out_seq_ans[0, i].item()]
+    if sym == "EOS":
+        break
+    res += sym + " "
+print(res)
+# ---------------------------------------------------------------------------------------------------------
+target_exp = res.split()
+
+for layer in range(num_enc_layers):
+    fig, axs = plt.subplots(1, num_heads, figsize=(20, 10))
+    print("Encoder Block Number", layer + 1)
+    for h in range(num_heads):
+        draw(
+            trained_model.encoder.layers[layer]
+            .attention.heads[h]
+            .weights_softmax.data.cpu()
+            .numpy()[0],
+            inp_seq,
+            inp_seq if h == 0 else [],
+            ax=axs[h],
+        )
+    plt.show()
+plt.close()
+
+for layer in range(num_dec_layers):
+    fig, axs = plt.subplots(1, num_heads, figsize=(20, 10))
+
+    print("Decoder Block number ", layer + 1)
+
+    print("Decoder Self Attention", layer + 1)
+    for h in range(num_heads):
+        draw(
+            trained_model.decoder.layers[layer]
+            .attention_self.heads[h]
+            .weights_softmax.data.cpu()
+            .numpy()[0],
+            target_exp,
+            target_exp if h == 0 else [],
+            ax=axs[h],
+        )
+    plt.show()
+    print("Decoder Cross attention", layer + 1)
+    fig, axs = plt.subplots(1, num_heads, figsize=(20, 10))
+    for h in range(num_heads):
+        draw(
+            trained_model.decoder.layers[layer]
+            .attention_cross.heads[h]
+            .weights_softmax.data.cpu()
+            .numpy()[0],
+            inp_seq,
+            target_exp if h == 0 else [],
+            ax=axs[h],
+        )
+    plt.show()
